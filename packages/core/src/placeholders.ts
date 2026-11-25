@@ -1,3 +1,4 @@
+import { hintFor } from './meaning';
 import type { Entity } from './types';
 
 /**
@@ -11,7 +12,7 @@ export class PlaceholderMap {
   /** Lowercased value -> placeholder, for aliases such as a surname on its own. */
   readonly aliasTo = new Map<string, string>();
 
-  constructor(private readonly opts: { generalizeAmounts?: boolean } = {}) {}
+  constructor(private readonly opts: { keepMeaning?: boolean } = {}) {}
 
   placeholderFor(entity: Entity): string {
     const key = entity.text.toLowerCase();
@@ -19,9 +20,9 @@ export class PlaceholderMap {
     if (existing) return existing;
     const n = (this.counters.get(entity.type) ?? 0) + 1;
     this.counters.set(entity.type, n);
-    // Utility-preserving redaction: keep the order of magnitude, drop the exact value.
-    const range = entity.type === 'FINANCIAL' && this.opts.generalizeAmounts ? moneyRange(entity.text) : null;
-    const ph = range ? `[${entity.type}_${n} · ${range}]` : `[${entity.type}_${n}]`;
+    // Utility-preserving redaction: keep what the AI needs, drop what identifies.
+    const hint = this.opts.keepMeaning ? hintFor(entity) : null;
+    const ph = hint ? `[${entity.type}_${n} · ${hint}]` : `[${entity.type}_${n}]`;
     this.byValue.set(key, ph);
     this.mapping[ph] = entity.text;
     return ph;
@@ -44,29 +45,6 @@ export class PlaceholderMap {
 /** Matches any Redline placeholder, with or without a range hint: [PERSON_1], [FINANCIAL_1 · $1M–10M]. */
 export const PLACEHOLDER_RE = /\[[A-Z_]+_\d+(?: · [^\]]+)?\]/g;
 export const isPlaceholder = (s: string) => new RegExp(`^${PLACEHOLDER_RE.source}$`).test(s);
-
-const MULTIPLIERS: Array<[RegExp, number]> = [
-  [/\b(?:billion|bn)\b|\dB\b/i, 1e9],
-  [/\bcrores?\b/i, 1e7],
-  [/\b(?:million|mn)\b|\dM\b/, 1e6],
-  [/\blakhs?\b/i, 1e5],
-  [/\dk\b|\dK\b/, 1e3],
-];
-
-const fmt = (sym: string, v: number) =>
-  v >= 1e9 ? `${sym}${v / 1e9}B` : v >= 1e6 ? `${sym}${v / 1e6}M` : v >= 1e3 ? `${sym}${v / 1e3}K` : `${sym}${v}`;
-
-/** "$4.2M" -> "$1M–10M"; "₹12 lakh" -> "₹1M–10M"; "€900" -> "€100–1K". */
-export function moneyRange(amount: string): string | null {
-  const num = amount.match(/\d+(?:,\d+)*(?:\.\d+)?/);
-  if (!num) return null;
-  let value = Number(num[0].replace(/,/g, ''));
-  for (const [re, mult] of MULTIPLIERS) if (re.test(amount)) { value *= mult; break; }
-  if (!Number.isFinite(value) || value <= 0) return null;
-  const sym = amount.match(/[$€£₹]/)?.[0] ?? amount.match(/USD|EUR|GBP|INR|Rs/)?.[0]?.concat(' ') ?? '';
-  const lo = 10 ** Math.floor(Math.log10(value));
-  return `${fmt(sym, lo)}–${fmt('', lo * 10)}`;
-}
 
 const escapeRegex =(s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 

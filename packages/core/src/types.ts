@@ -36,6 +36,8 @@ export interface Entity {
   type: EntityType;
   confidence: number;
   source: DetectorSource;
+  /** Optional meaning-preserving description from Nano, e.g. "blood cancer". Validated by safeHint. */
+  hint?: string;
 }
 
 /** Where a pipeline step actually ran. */

@@ -21,7 +21,8 @@ import { ALL_ENTITY_TYPES, SEMANTIC_TYPES, type Entity, type EntityType, type Ri
 const LANGS = { expectedInputs: [{ type: 'text' as const, languages: ['en'] }], expectedOutputs: [{ type: 'text' as const, languages: ['en'] }] };
 
 // Compact on purpose: output tokens dominate on-device latency, so no confidence
-// field and short keys. {"e":[{"t":"PERSON","s":"Priya Shah"}]}
+// field and short keys. {"e":[{"t":"MEDICAL_CONDITION","s":"CLL","g":"blood cancer"}]}
+// g = optional meaning-preserving category, validated by safeHint before use.
 const ENTITY_SCHEMA = {
   type: 'object',
   properties: {
@@ -29,7 +30,7 @@ const ENTITY_SCHEMA = {
       type: 'array',
       items: {
         type: 'object',
-        properties: { t: { type: 'string', enum: SEMANTIC_TYPES }, s: { type: 'string' } },
+        properties: { t: { type: 'string', enum: SEMANTIC_TYPES }, s: { type: 'string' }, g: { type: 'string' } },
         required: ['t', 's'],
       },
     },
@@ -81,7 +82,10 @@ export function createModels(ai: AI, policy: Policy) {
 const EXTRACT_SYSTEM = `Extract private details from the user's text for redaction. Copy each span exactly.
 t is one of: PERSON (a person's name), ORG (company, firm, hospital), CLIENT_ID (case/matter/account/patient/employee/record number),
 ADDRESS (street address or specific place), MEDICAL_CONDITION, MEDICATION (drug and dose), PROJECT_CODENAME.
-List each distinct span once. Skip job titles and generic words.`;
+List each distinct span once. Skip job titles and generic words.
+For MEDICAL_CONDITION, MEDICATION, ORG and ADDRESS also give g: a generic 1-3 word category that keeps the meaning
+but never repeats the span (e.g. leukemia -> "blood cancer", ibrutinib 420mg -> "cancer drug", Acme Corp -> "company",
+12 Baker Street -> "street address"). Omit g for other types.`;
 
 const RISK_SYSTEM = `You are a privacy reviewer. The text has ALREADY been redacted: values like [PERSON_1] are placeholders.
 Judge whether a reader could still re-identify a specific person or organization from what remains
@@ -153,7 +157,7 @@ export async function extractEntitiesOnDevice(
   if (location !== 'on_device') {
     throw new Error('Redline privacy invariant: raw-text extraction did not run on-device.');
   }
-  const parsed = parseJson<{ e?: Array<{ t?: string; s?: string }> }>(res.response.text());
+  const parsed = parseJson<{ e?: Array<{ t?: string; s?: string; g?: string }> }>(res.response.text());
   const seen = new Set<string>();
   const entities: Entity[] = [];
   for (const item of parsed.e ?? []) {
@@ -163,7 +167,7 @@ export async function extractEntitiesOnDevice(
     // Nano must quote verbatim; drop anything it invented or repeated.
     if (!text.toLowerCase().includes(span.toLowerCase()) || seen.has(span.toLowerCase())) continue;
     seen.add(span.toLowerCase());
-    entities.push({ text: span, type, confidence: 0.8, source: 'on_device' });
+    entities.push({ text: span, type, confidence: 0.8, source: 'on_device', ...(item.g ? { hint: item.g } : {}) });
   }
   return { entities, location };
 }

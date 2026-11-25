@@ -30,6 +30,7 @@ Console → **Remote Config → Create configuration**, then add these parameter
 | `redline_min_paste_chars` | `40` |
 | `redline_nano_confidence_threshold` | `0.5` |
 | `redline_cloud_model` | `gemini-3.5-flash-lite` |
+| `redline_keep_meaning` | `true` (hints like `[ORG_1 · hospital]`; `false` = bare placeholders) |
 
 ## 5. Chrome with Gemini Nano
 - Use Chrome **138+** on desktop (Windows/macOS/Linux) with **22 GB free disk space** and a GPU with more than 4 GB VRAM (or a 16 GB RAM / 4-core CPU).
@@ -40,7 +41,7 @@ Console → **Remote Config → Create configuration**, then add these parameter
 ## 6. Run
 ```powershell
 npm install
-npm run dev:web          # Playground at http://localhost:5173
+npm run dev:web          # Playground at http://localhost:5173 (accuracy eval: /eval.html)
 npm run build            # builds apps/web/dist and apps/extension/dist
 npm test                 # core unit tests
 ```

@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { detectPatterns, luhnValid } from './detectors';
-import { assertNoLeak, moneyRange, rehydrate } from './placeholders';
+import { assertNoLeak, rehydrate } from './placeholders';
+import { birthDecade, moneyRange, safeHint } from './meaning';
 import { DEFAULT_POLICY, policyFromValues } from './policy';
 import { redact, reviewRisk } from './pipeline';
 import { ALL_ENTITY_TYPES, type Entity } from './types';
@@ -75,7 +76,7 @@ describe('pipeline', () => {
     const r = await redact('Priya Shah, priya@shahlegal.com', DEFAULT_POLICY, {
       extractLocal: nano([{ text: 'Priya Shah', type: 'PERSON', confidence: 0.9 }]),
     });
-    expect(r.redacted).toBe('[PERSON_1], [EMAIL_1]');
+    expect(r.redacted).toBe('[PERSON_1], [EMAIL_1 · work email]');
   });
 
   it('emits an instant pattern-only result before Nano finishes', async () => {
@@ -84,7 +85,7 @@ describe('pipeline', () => {
       onPatterns: (p) => partials.push(p.redacted),
       extractLocal: nano([{ text: 'Bob Lee', type: 'PERSON', confidence: 0.9 }]),
     });
-    expect(partials).toEqual(['Mail [EMAIL_1] about Bob Lee']);
+    expect(partials).toEqual(['Mail [EMAIL_1 · work email] about Bob Lee']);
   });
 
   it('falls back to patterns with reduced protection when Nano is unavailable', async () => {
@@ -92,7 +93,7 @@ describe('pipeline', () => {
       extractLocal: async () => { throw new Error('LanguageModel unavailable'); },
     });
     expect(r.reducedProtection).toBe(true);
-    expect(r.redacted).toContain('[EMAIL_1]');
+    expect(r.redacted).toContain('[EMAIL_1 · work email]');
     expect(r.trace.find((s) => s.step.includes('Nano'))?.location).toBe('skipped');
   });
 
@@ -140,7 +141,7 @@ describe('utility-preserving money redaction', () => {
   });
 
   it('hides magnitude when policy turns generalization off', async () => {
-    const r = await redact('They offered $4.2M.', { ...DEFAULT_POLICY, generalizeAmounts: false }, {});
+    const r = await redact('They offered $4.2M.', { ...DEFAULT_POLICY, keepMeaning: false }, {});
     expect(r.redacted).toBe('They offered [FINANCIAL_1].');
   });
 });
@@ -161,5 +162,65 @@ describe('policy from Remote Config', () => {
     expect(p.reidCheckMode).toBe('on_device');
     expect(p.allowOverride).toBe(false);
     expect(p.cloudModel).toBe(DEFAULT_POLICY.cloudModel);
+  });
+});
+
+describe('keep meaning across all types', () => {
+  const nanoE = (entities: Array<{ text: string; type: Entity['type']; hint?: string }>) =>
+    async () => ({ entities: entities.map((e) => ({ ...e, confidence: 0.9, source: 'on_device' as const })), location: 'on_device' as const });
+
+  it('adds safe hints per type', async () => {
+    const text =
+      'Patient John Miller, DOB 03/14/1961, at St. Mary\'s Hospital has chronic lymphocytic leukemia, on ibrutinib 420mg. ' +
+      'Email john.miller@gmail.com, office j.miller@acme.io, phone +1 415-555-0132, card 4111 1111 1111 1111.';
+    const r = await redact(text, DEFAULT_POLICY, {
+      extractLocal: nanoE([
+        { text: 'John Miller', type: 'PERSON' },
+        { text: "St. Mary's Hospital", type: 'ORG', hint: 'hospital' },
+        { text: 'chronic lymphocytic leukemia', type: 'MEDICAL_CONDITION', hint: 'blood cancer' },
+        { text: 'ibrutinib 420mg', type: 'MEDICATION', hint: 'cancer drug' },
+      ]),
+    });
+    for (const ph of [
+      '[PERSON_1]', '[DATE_OF_BIRTH_1 · born 1960s]', '[ORG_1 · hospital]', '[MEDICAL_CONDITION_1 · blood cancer]',
+      '[MEDICATION_1 · cancer drug]', '[EMAIL_1 · personal email]', '[EMAIL_2 · work email]',
+      '[PHONE_1 · US/Canada number]', '[CARD_NUMBER_1 · Visa]',
+    ]) expect(r.redacted).toContain(ph);
+    expect(rehydrate(r.redacted, r.mapping)).toBe(text);
+  });
+
+  it('rejects a hint that echoes the original value', () => {
+    expect(safeHint("Mary's hospital", "St. Mary's Hospital")).toBeNull();
+    expect(safeHint('leukemia', 'chronic lymphocytic leukemia')).toBeNull();
+    expect(safeHint('hospital', "St. Mary's Hospital")).toBe('hospital');
+    expect(safeHint('blood cancer', 'chronic lymphocytic leukemia')).toBe('blood cancer');
+  });
+
+  it('falls back to a deterministic org kind when Nano gives none', async () => {
+    const r = await redact('Talk to Northwind Legal LLP and Acme Corp.', DEFAULT_POLICY, {
+      extractLocal: nanoE([
+        { text: 'Northwind Legal LLP', type: 'ORG' },
+        { text: 'Acme Corp', type: 'ORG' },
+      ]),
+    });
+    expect(r.redacted).toBe('Talk to [ORG_1 · law firm] and [ORG_2 · company].');
+  });
+
+  it('birth decade handles 2-digit years', () => {
+    expect(birthDecade('DOB 3/14/61')).toBe('born 1960s');
+    expect(birthDecade('born on 2001-05-02')).toBe('born 2000s');
+  });
+
+  it('strips all hints when keepMeaning is off', async () => {
+    const r = await redact('Mail a@gmail.com about $5,000', { ...DEFAULT_POLICY, keepMeaning: false }, {});
+    expect(r.redacted).toBe('Mail [EMAIL_1] about [FINANCIAL_1]');
+  });
+});
+
+describe('client ID patterns', () => {
+  it('catches case/patient/account numbers but not standards or diseases', () => {
+    const t = 'Matter LGL-2291, MRN 448812, account 4417-2290-1183, ARB/22/417. COVID-19 test, ISO-9001, HER2-positive, Q3 2024.';
+    const ids = detectPatterns(t, all).filter((e) => e.type === 'CLIENT_ID').map((e) => e.text);
+    expect(ids).toEqual(['LGL-2291', 'ARB/22/417', '448812', '4417-2290-1183']);
   });
 });

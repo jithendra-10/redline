@@ -40,10 +40,28 @@ const DETECTORS: PatternDetector[] = [
   { type: 'GOV_ID', regex: /\b\d{3}-\d{2}-\d{4}\b/g },
   { type: 'GOV_ID', regex: /\b\d{3} \d{3} \d{4}\b/g },
   { type: 'GOV_ID', regex: /\b\d{4} \d{4} \d{4}\b/g },
+  // Case / matter / patient / employee / policy numbers: LGL-2291, PT-77120, ARB/22/417, CV-2024-00813.
+  {
+    type: 'CLIENT_ID',
+    regex: /\b[A-Z]{1,5}[-/]\d{2,}(?:[-/][A-Z0-9]+)*\b/g,
+    // Not identifiers: COVID-19, ISO-9001, RFC-7231, SARS-2… (standards, diseases, models).
+    validate: (m) =>
+      m.replace(/\D/g, '').length >= 4 && !/^(ISO|IEC|RFC|COVID|SARS|MERS|EN|DIN|IEEE|ANSI|GPT|MIL|NIST|SOC|PCI|USB|HDMI)\b/.test(m),
+  },
+  // Bare numbers right after an ID keyword: "MRN 448812", "(ID 55102)", "account 4417-2290-1183".
+  {
+    type: 'CLIENT_ID',
+    regex: /(?<=\b(?:MRN|ID|ref|reference|policy|account|acct|matter|case(?: no\.?)?|employee(?: no\.?)?|patient(?: no\.?)?)[\s:#.]*)\d[\d-]{3,}\d\b/gi,
+  },
+  // After IDs, so "account 4417-2290-1183" isn't mistaken for a phone number.
   {
     type: 'PHONE',
-    regex: /(?:\+\d{1,3}[ .-]?)?(?:\(\d{2,4}\)[ .-]?)?\d{3,4}[ .-]\d{3,4}(?:[ .-]\d{2,4})?\b/g,
-    validate: (m) => m.replace(/\D/g, '').length >= 9,
+    // US 512-555-0148, UK 020 7946 0958, India 98450 12345, with optional +country code.
+    regex: /(?:\+\d{1,3}[ .-]?)?(?:\(\d{2,4}\)[ .-]?)?\b\d{2,5}[ .-]\d{3,5}(?:[ .-]\d{2,5})?\b/g,
+    validate: (m) => {
+      const n = m.replace(/\D/g, '').length;
+      return n >= 9 && n <= 15;
+    },
   },
   // Money: $4.2M, €12,500, ₹12 lakh, USD 148,000, Rs. 5,00,000. Deterministic so it never flickers.
   {
