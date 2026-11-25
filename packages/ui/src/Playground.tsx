@@ -50,6 +50,7 @@ export function Playground({ config, surface }: { config: RedlineConfig | null; 
   const [result, setResult] = useState<RedactionResult | null>(null);
   const [risk, setRisk] = useState<RiskReport | null>(null);
   const [busy, setBusy] = useState<'redact' | 'risk' | null>(null);
+  const [partial, setPartial] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [reply, setReply] = useState('');
 
@@ -58,10 +59,16 @@ export function Playground({ config, surface }: { config: RedlineConfig | null; 
     setError(null);
     setRisk(null);
     try {
-      setResult(await rl.runRedact(input));
+      setResult(
+        await rl.runRedact(input, (p) => {
+          setResult(p);
+          setPartial(true);
+        }),
+      );
     } catch (e) {
       setError((e as Error).message);
     } finally {
+      setPartial(false);
       setBusy(null);
     }
   };
@@ -89,7 +96,8 @@ export function Playground({ config, surface }: { config: RedlineConfig | null; 
           <span className="rl-tag">Privacy firewall for AI chat</span>
         </div>
         <div className="rl-status">
-          <span className={`rl-dot ${nanoReady ? 'ok' : 'warn'}`} /> {DEVICE_TEXT[rl.device]}
+          <span className={`rl-dot ${nanoReady && rl.warm !== 'warming' ? 'ok' : 'warn'}`} />{' '}
+          {nanoReady && rl.warm === 'warming' ? 'Loading Gemini Nano into memory…' : DEVICE_TEXT[rl.device]}
           {(rl.device === 'downloadable' || rl.device === 'downloading') && rl.configured && (
             <button className="rl-btn rl-btn--ghost" onClick={rl.downloadNano} disabled={rl.downloadProgress !== null}>
               {rl.downloadProgress !== null ? `Downloading ${Math.round(rl.downloadProgress * 100)}%` : 'Download Nano'}
@@ -118,7 +126,7 @@ export function Playground({ config, surface }: { config: RedlineConfig | null; 
         </div>
         <textarea className="rl-input" value={input} onChange={(e) => setInput(e.target.value)} rows={surface === 'web' ? 6 : 8} />
         <button className="rl-btn" onClick={doRedact} disabled={busy !== null || !input.trim()}>
-          {busy === 'redact' ? 'Redacting on-device…' : 'Redact'}
+          {busy === 'redact' ? 'Redacting…' : 'Redact'}
         </button>
       </section>
 
@@ -128,7 +136,11 @@ export function Playground({ config, surface }: { config: RedlineConfig | null; 
         <section className="rl-card">
           <div className="rl-row">
             <h2>2 · What stays on your device vs. what you send</h2>
-            {result.reducedProtection && <span className="rl-badge rl-badge--skipped">Reduced protection: patterns only</span>}
+            {partial ? (
+              <span className="rl-badge rl-badge--on_device rl-pulse">🔒 Gemini Nano reviewing on-device…</span>
+            ) : (
+              result.reducedProtection && <span className="rl-badge rl-badge--skipped">Reduced protection: patterns only</span>
+            )}
           </div>
           <div className="rl-diff">
             <div>
@@ -138,7 +150,7 @@ export function Playground({ config, surface }: { config: RedlineConfig | null; 
             <div>
               <h3>Redacted · safe to paste</h3>
               <p className="rl-text">{highlightPlaceholders(result.redacted)}</p>
-              <button className="rl-btn rl-btn--ghost" onClick={() => navigator.clipboard.writeText(result.redacted)}>Copy redacted</button>
+              <button className="rl-btn rl-btn--ghost" disabled={partial} onClick={() => navigator.clipboard.writeText(result.redacted)}>Copy redacted</button>
             </div>
           </div>
 
@@ -156,7 +168,7 @@ export function Playground({ config, surface }: { config: RedlineConfig | null; 
           </ol>
 
           <div className="rl-row">
-            <button className="rl-btn" onClick={doRisk} disabled={busy !== null || !rl.configured || rl.policy.reidCheckMode === 'off'}>
+            <button className="rl-btn" onClick={doRisk} disabled={busy !== null || partial || !rl.configured || rl.policy.reidCheckMode === 'off'}>
               {busy === 'risk' ? 'Checking…' : 'Check re-identification risk'}
             </button>
             <span className="rl-muted">Only the redacted text is sent. Originals are blocked in code.</span>

@@ -21,10 +21,12 @@ export const ALL_ENTITY_TYPES: EntityType[] = [
   'PROJECT_CODENAME', 'SECRET_URL',
 ];
 
-/** Types the semantic (Nano) pass is asked to find; the rest are deterministic. */
+/**
+ * Types the semantic (Nano) pass is asked to find; the rest are deterministic.
+ * Kept short on purpose: every output token costs on-device latency.
+ */
 export const SEMANTIC_TYPES: EntityType[] = [
-  'PERSON', 'ORG', 'CLIENT_ID', 'ADDRESS', 'MEDICAL_CONDITION', 'MEDICATION', 'FINANCIAL',
-  'PROJECT_CODENAME',
+  'PERSON', 'ORG', 'CLIENT_ID', 'ADDRESS', 'MEDICAL_CONDITION', 'MEDICATION', 'PROJECT_CODENAME',
 ];
 
 export type DetectorSource = 'pattern' | 'on_device' | 'cloud_suggestion' | 'user';
@@ -52,6 +54,8 @@ export interface RedactionResult {
   entities: Entity[];
   /** placeholder -> original value. Never leaves the device. */
   mapping: Record<string, string>;
+  /** Extra sensitive strings replaced via aliases (e.g. surname "Shah" of "Priya Shah"). */
+  aliases: string[];
   trace: TraceStep[];
   /** True when the on-device model was unavailable and only patterns ran. */
   reducedProtection: boolean;

@@ -10,6 +10,7 @@ import {
   prepareDevice,
   redact,
   reviewRisk,
+  warmUpDevice,
   watchPolicy,
   type DeviceStatus,
   type Entity,
@@ -55,6 +56,17 @@ export function useRedline(config: RedlineConfig | null) {
 
   const models = useMemo(() => (fb ? createModels(fb.ai, policy) : null), [fb, policy]);
 
+  // Load Nano into memory as soon as it's available, so the first paste isn't slow.
+  const [warm, setWarm] = useState<'idle' | 'warming' | 'ready'>('idle');
+  useEffect(() => {
+    if (!models || device !== 'available' || warm !== 'idle') return;
+    setWarm('warming');
+    warmUpDevice(models.extractor)
+      .then((ms) => console.info(`[redline] Nano warm-up ${ms} ms`))
+      .catch((e) => console.warn('[redline] Nano warm-up failed', e))
+      .finally(() => setWarm('ready'));
+  }, [models, device, warm]);
+
   /** Must run from a click: Chrome requires a user gesture to download Nano. */
   const downloadNano = useCallback(async () => {
     if (!models) return;
@@ -68,8 +80,9 @@ export function useRedline(config: RedlineConfig | null) {
   }, [models]);
 
   const runRedact = useCallback(
-    async (text: string): Promise<RedactionResult> => {
+    async (text: string, onPatterns?: (partial: RedactionResult) => void): Promise<RedactionResult> => {
       const result = await redact(text, policy, {
+        onPatterns,
         extractLocal:
           models && device === 'available'
             ? (t, enabled) => extractEntitiesOnDevice(models.extractor, t, enabled)
@@ -118,6 +131,7 @@ export function useRedline(config: RedlineConfig | null) {
     policy,
     policyLive,
     device,
+    warm,
     downloadProgress,
     stats,
     downloadNano,

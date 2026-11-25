@@ -45,6 +45,11 @@ const DETECTORS: PatternDetector[] = [
     regex: /(?:\+\d{1,3}[ .-]?)?(?:\(\d{2,4}\)[ .-]?)?\d{3,4}[ .-]\d{3,4}(?:[ .-]\d{2,4})?\b/g,
     validate: (m) => m.replace(/\D/g, '').length >= 9,
   },
+  // Money: $4.2M, €12,500, ₹12 lakh, USD 148,000, Rs. 5,00,000. Deterministic so it never flickers.
+  {
+    type: 'FINANCIAL',
+    regex: /(?:[$€£₹]\s?|\b(?:USD|EUR|GBP|INR|Rs\.?)\s?)\d+(?:,\d+)*(?:\.\d+)?(?:\s?(?:million|billion|lakhs?|crores?|[KMB]|k|bn|mn)\b)?/g,
+  },
   {
     type: 'DATE_OF_BIRTH',
     regex: /\b(?:DOB|D\.O\.B\.|date of birth|born(?: on)?)[:\s]*\d{1,4}[/.-]\d{1,2}[/.-]\d{1,4}\b/gi,

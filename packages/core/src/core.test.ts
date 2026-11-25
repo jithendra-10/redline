@@ -17,6 +17,11 @@ describe('pattern detectors', () => {
     expect(luhnValid('4111 1111 1111 1112')).toBe(false);
     expect(detectPatterns('order 1234 5678 9012 3456', new Set(['CARD_NUMBER'])).length).toBe(0);
   });
+  it('finds money amounts deterministically', () => {
+    const t = 'Settlement of $4.2M, salary $148,000, fee ₹12 lakh, bonus USD 5,000 and €900.';
+    const found = detectPatterns(t, all).filter((e) => e.type === 'FINANCIAL').map((e) => e.text);
+    expect(found).toEqual(['$4.2M', '$148,000', '₹12 lakh', 'USD 5,000', '€900']);
+  });
   it('respects disabled types', () => {
     expect(detectPatterns('jane@acme.com', new Set(['PHONE']))).toEqual([]);
   });
@@ -39,6 +44,35 @@ describe('pipeline', () => {
     expect(r.redacted.match(/\[PERSON_1\]/g)?.length).toBe(2);
     expect(r.reducedProtection).toBe(false);
     expect(rehydrate(r.redacted, r.mapping)).toBe(text);
+  });
+
+  it('redacts a surname used alone ("Ms. Shah") under the same placeholder', async () => {
+    const text = 'Our client Priya Shah declined. Ms. Shah asked that calls go to Dr. Rao, not Anita Rao.';
+    const r = await redact(text, DEFAULT_POLICY, {
+      extractLocal: nano([
+        { text: 'Priya Shah', type: 'PERSON', confidence: 0.9 },
+        { text: 'Anita Rao', type: 'PERSON', confidence: 0.9 },
+      ]),
+    });
+    expect(r.redacted).toBe('Our client [PERSON_1] declined. Ms. [PERSON_1] asked that calls go to Dr. [PERSON_2], not [PERSON_2].');
+    expect(() => assertNoLeak(r.redacted, r.mapping, r.aliases)).not.toThrow();
+    expect(() => assertNoLeak('Ms. Shah', r.mapping, r.aliases)).toThrow();
+  });
+
+  it('does not alias inside other words (Shah vs shahlegal.com)', async () => {
+    const r = await redact('Priya Shah, priya@shahlegal.com', DEFAULT_POLICY, {
+      extractLocal: nano([{ text: 'Priya Shah', type: 'PERSON', confidence: 0.9 }]),
+    });
+    expect(r.redacted).toBe('[PERSON_1], [EMAIL_1]');
+  });
+
+  it('emits an instant pattern-only result before Nano finishes', async () => {
+    const partials: string[] = [];
+    await redact('Mail bob@example.org about Bob Lee', DEFAULT_POLICY, {
+      onPatterns: (p) => partials.push(p.redacted),
+      extractLocal: nano([{ text: 'Bob Lee', type: 'PERSON', confidence: 0.9 }]),
+    });
+    expect(partials).toEqual(['Mail [EMAIL_1] about Bob Lee']);
   });
 
   it('falls back to patterns with reduced protection when Nano is unavailable', async () => {

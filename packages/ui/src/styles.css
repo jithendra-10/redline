@@ -72,3 +72,6 @@ body { margin: 0; background: var(--rl-bg); color: var(--rl-ink); font: 15px/1.5
 .rl-banner { background: var(--rl-amber-soft); border-radius: 8px; padding: 10px 12px; font-size: 13px; }
 .rl-banner--error { background: var(--rl-red-soft); }
 .rl-footer { display: flex; flex-wrap: wrap; gap: 8px 18px; font-size: 13px; padding: 4px 2px; }
+.rl-pulse { animation: rl-pulse 1.2s ease-in-out infinite; }
+@keyframes rl-pulse { 50% { opacity: .55; } }
+@media (prefers-reduced-motion: reduce) { .rl-pulse { animation: none; } }
