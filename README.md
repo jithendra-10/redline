@@ -5,7 +5,8 @@
 Built for the #BuildHybridAI 2026 hackathon (Web/Chrome track).
 
 - Product spec: [PRD.md](PRD.md)
-- Status: in development
+- Status: Day 1 — core pipeline, hybrid AI layer, web Playground and extension side panel spike
+- Setup: [docs/SETUP.md](docs/SETUP.md)
 
 ## License
 Apache-2.0
