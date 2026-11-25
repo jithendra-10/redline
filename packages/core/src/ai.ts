@@ -117,6 +117,17 @@ export async function prepareDevice(model: GenerativeModel, onProgress?: (p: num
 const locationOf = (src: InferenceSource | undefined, fallback: StepLocation): StepLocation =>
   src === InferenceSource.ON_DEVICE ? 'on_device' : src === InferenceSource.IN_CLOUD ? 'in_cloud' : fallback;
 
+/** A stuck Prompt API session (or network) must never freeze the UI. */
+function withTimeout<T>(p: Promise<T>, ms: number, what: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const id = setTimeout(() => reject(new Error(`${what} timed out after ${ms / 1000}s`)), ms);
+    p.then(
+      (v) => { clearTimeout(id); resolve(v); },
+      (e) => { clearTimeout(id); reject(e); },
+    );
+  });
+}
+
 function parseJson<T>(raw: string): T {
   const cleaned = raw.trim().replace(/^```(?:json)?\s*/i, '').replace(/```$/, '');
   return JSON.parse(cleaned) as T;
@@ -128,7 +139,7 @@ export async function extractEntitiesOnDevice(
   text: string,
   enabled: Set<EntityType>,
 ): Promise<{ entities: Entity[]; location: StepLocation }> {
-  const res = await extractor.generateContent(text);
+  const res = await withTimeout(extractor.generateContent(text), 30_000, 'On-device extraction');
   const location = locationOf(res.response.inferenceSource, 'on_device');
   if (location !== 'on_device') {
     throw new Error('Redline privacy invariant: raw-text extraction did not run on-device.');
@@ -148,7 +159,7 @@ export async function extractEntitiesOnDevice(
 /** Re-identification risk check. Caller must pass REDACTED text only (enforced in pipeline). */
 export async function checkReidRisk(riskChecker: GenerativeModel, redacted: string): Promise<RiskReport> {
   const t0 = performance.now();
-  const res = await riskChecker.generateContent(redacted);
+  const res = await withTimeout(riskChecker.generateContent(redacted), 30_000, 'Re-identification check');
   const parsed = parseJson<Omit<RiskReport, 'location' | 'ms'>>(res.response.text());
   return {
     risk: parsed.risk ?? 'medium',
