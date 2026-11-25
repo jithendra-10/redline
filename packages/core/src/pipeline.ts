@@ -12,8 +12,8 @@ export interface PipelineDeps {
   onPatterns?: (partial: RedactionResult) => void;
 }
 
-function build(text: string, entities: Entity[]) {
-  const map = new PlaceholderMap();
+function build(text: string, entities: Entity[], generalizeAmounts: boolean) {
+  const map = new PlaceholderMap({ generalizeAmounts });
   const redacted = applyRedactions(text, entities, map);
   return { redacted, mapping: map.mapping, aliases: map.aliases };
 }
@@ -33,7 +33,7 @@ export async function redact(text: string, policy: Policy, deps: PipelineDeps): 
   let t = now();
   const patternEntities = detectPatterns(text, enabled);
   trace.push({ step: 'Pattern detectors', location: 'local_code', ms: Math.round(now() - t), detail: `${patternEntities.length} found` });
-  deps.onPatterns?.({ original: text, ...build(text, patternEntities), entities: patternEntities, trace: [...trace], reducedProtection: !deps.extractLocal });
+  deps.onPatterns?.({ original: text, ...build(text, patternEntities, policy.generalizeAmounts), entities: patternEntities, trace: [...trace], reducedProtection: !deps.extractLocal });
 
   let semantic: Entity[] = [];
   let reducedProtection = false;
@@ -54,7 +54,7 @@ export async function redact(text: string, policy: Policy, deps: PipelineDeps): 
   }
 
   const entities = [...patternEntities, ...semantic];
-  return { original: text, ...build(text, entities), entities, trace, reducedProtection };
+  return { original: text, ...build(text, entities, policy.generalizeAmounts), entities, trace, reducedProtection };
 }
 
 /** Cloud-allowed step. Guards the privacy invariant before anything leaves the device. */
@@ -65,7 +65,7 @@ export async function reviewRisk(result: RedactionResult, deps: PipelineDeps): P
 }
 
 /** Apply extra redactions (e.g. accepted cloud suggestions) on top of an existing result. */
-export function addRedactions(result: RedactionResult, extra: Entity[]): RedactionResult {
+export function addRedactions(result: RedactionResult, extra: Entity[], policy: Policy): RedactionResult {
   const all = [...result.entities, ...extra];
-  return { ...result, entities: all, ...build(result.original, all) };
+  return { ...result, entities: all, ...build(result.original, all, policy.generalizeAmounts) };
 }

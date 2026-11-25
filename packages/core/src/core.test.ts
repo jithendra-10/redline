@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { detectPatterns, luhnValid } from './detectors';
-import { assertNoLeak, rehydrate } from './placeholders';
+import { assertNoLeak, moneyRange, rehydrate } from './placeholders';
 import { DEFAULT_POLICY, policyFromValues } from './policy';
 import { redact, reviewRisk } from './pipeline';
 import { ALL_ENTITY_TYPES, type Entity } from './types';
@@ -59,6 +59,18 @@ describe('pipeline', () => {
     expect(() => assertNoLeak('Ms. Shah', r.mapping, r.aliases)).toThrow();
   });
 
+  it('merges "Ms. Shah" into [PERSON_1] even when Nano returns it as its own person', async () => {
+    const text = 'Our client Priya Shah declined. Ms. Shah asked for a call.';
+    const r = await redact(text, DEFAULT_POLICY, {
+      extractLocal: nano([
+        { text: 'Priya Shah', type: 'PERSON', confidence: 0.9 },
+        { text: 'Ms. Shah', type: 'PERSON', confidence: 0.9 },
+      ]),
+    });
+    expect(r.redacted).toBe('Our client [PERSON_1] declined. [PERSON_1] asked for a call.');
+    expect(Object.keys(r.mapping).filter((k) => k.startsWith('[PERSON'))).toEqual(['[PERSON_1]']);
+  });
+
   it('does not alias inside other words (Shah vs shahlegal.com)', async () => {
     const r = await redact('Priya Shah, priya@shahlegal.com', DEFAULT_POLICY, {
       extractLocal: nano([{ text: 'Priya Shah', type: 'PERSON', confidence: 0.9 }]),
@@ -108,6 +120,28 @@ describe('pipeline', () => {
 
   it('assertNoLeak blocks a payload containing an original value', () => {
     expect(() => assertNoLeak('hello John Miller', { '[PERSON_1]': 'John Miller' })).toThrow(/privacy invariant/);
+  });
+});
+
+describe('utility-preserving money redaction', () => {
+  it('maps amounts to an order-of-magnitude range', () => {
+    expect(moneyRange('$4.2M')).toBe('$1M–10M');
+    expect(moneyRange('$148,000')).toBe('$100K–1M');
+    expect(moneyRange('₹12 lakh')).toBe('₹1M–10M');
+    expect(moneyRange('€900')).toBe('€100–1K');
+    expect(moneyRange('USD 5,000')).toBe('USD 1K–10K');
+  });
+
+  it('keeps magnitude in the placeholder and still re-hydrates exactly', async () => {
+    const text = 'They offered $4.2M to settle.';
+    const r = await redact(text, DEFAULT_POLICY, {});
+    expect(r.redacted).toBe('They offered [FINANCIAL_1 · $1M–10M] to settle.');
+    expect(rehydrate(r.redacted, r.mapping)).toBe(text);
+  });
+
+  it('hides magnitude when policy turns generalization off', async () => {
+    const r = await redact('They offered $4.2M.', { ...DEFAULT_POLICY, generalizeAmounts: false }, {});
+    expect(r.redacted).toBe('They offered [FINANCIAL_1].');
   });
 });
 

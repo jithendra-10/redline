@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from 'react';
-import { rehydrate, type RedactionResult, type RedlineConfig, type RiskReport, type StepLocation } from '@redline/core';
+import { isPlaceholder, PLACEHOLDER_RE, rehydrate, type RedactionResult, type RedlineConfig, type RiskReport, type StepLocation } from '@redline/core';
 import { useRedline } from './useRedline';
 
 const SAMPLES: Record<string, string> = {
@@ -21,8 +21,8 @@ function LocBadge({ loc }: { loc: StepLocation }) {
 }
 
 function highlightPlaceholders(text: string): ReactNode[] {
-  return text.split(/(\[[A-Z_]+_\d+\])/g).map((part, i) =>
-    /^\[[A-Z_]+_\d+\]$/.test(part) ? <mark key={i} className="rl-ph">{part}</mark> : <span key={i}>{part}</span>,
+  return text.split(new RegExp(`(${PLACEHOLDER_RE.source})`, 'g')).map((part, i) =>
+    isPlaceholder(part) ? <mark key={i} className="rl-ph">{part}</mark> : <span key={i}>{part}</span>,
   );
 }
 
@@ -148,8 +148,8 @@ export function Playground({ config, surface }: { config: RedlineConfig | null; 
               <p className="rl-text">{highlightOriginal(result.original, Object.values(result.mapping))}</p>
             </div>
             <div>
-              <h3>Redacted · safe to paste</h3>
-              <p className="rl-text">{highlightPlaceholders(result.redacted)}</p>
+              <h3>{partial ? 'Redacted · draft, still checking' : 'Redacted · safe to paste'}</h3>
+              <p className={`rl-text ${partial ? 'rl-provisional' : ''}`}>{highlightPlaceholders(result.redacted)}</p>
               <button className="rl-btn rl-btn--ghost" disabled={partial} onClick={() => navigator.clipboard.writeText(result.redacted)}>Copy redacted</button>
             </div>
           </div>
@@ -160,6 +160,13 @@ export function Playground({ config, surface }: { config: RedlineConfig | null; 
                 <LocBadge loc={s.location} /> <strong>{s.step}</strong> <span className="rl-muted">{s.ms} ms · {s.detail}</span>
               </li>
             ))}
+            {partial && (
+              <li>
+                <span className="rl-badge rl-badge--on_device rl-pulse">🔒 On-device · Gemini Nano</span>{' '}
+                <strong>Finding names, companies, IDs and medical terms…</strong>{' '}
+                <span className="rl-muted">numbers and emails were caught instantly; the rest takes a few seconds</span>
+              </li>
+            )}
             {risk && (
               <li>
                 <LocBadge loc={risk.location} /> <strong>Re-identification check</strong> <span className="rl-muted">{risk.ms} ms</span>

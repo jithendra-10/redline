@@ -13,6 +13,8 @@ export interface Policy {
   allowOverride: boolean;
   nanoConfidenceThreshold: number;
   cloudModel: string;
+  /** Keep magnitude of money amounts: [FINANCIAL_1 · $1M–10M] instead of [FINANCIAL_1]. */
+  generalizeAmounts: boolean;
 }
 
 export const DEFAULT_POLICY: Policy = {
@@ -26,6 +28,7 @@ export const DEFAULT_POLICY: Policy = {
   allowOverride: true,
   nanoConfidenceThreshold: 0.5,
   cloudModel: 'gemini-3.5-flash-lite',
+  generalizeAmounts: true,
 };
 
 /** Remote Config keys and their in-app defaults (strings, as RC stores them). */
@@ -38,6 +41,7 @@ export const RC_DEFAULTS: Record<string, string | number | boolean> = {
   redline_allow_override: DEFAULT_POLICY.allowOverride,
   redline_nano_confidence_threshold: DEFAULT_POLICY.nanoConfidenceThreshold,
   redline_cloud_model: DEFAULT_POLICY.cloudModel,
+  redline_generalize_amounts: DEFAULT_POLICY.generalizeAmounts,
 };
 
 function parseList<T extends string>(raw: string, fallback: T[], allowed?: readonly string[]): T[] {
@@ -69,5 +73,6 @@ export function policyFromValues(get: (key: string) => string): Policy {
     allowOverride: get('redline_allow_override') !== 'false',
     nanoConfidenceThreshold: num('redline_nano_confidence_threshold', DEFAULT_POLICY.nanoConfidenceThreshold),
     cloudModel: get('redline_cloud_model') || DEFAULT_POLICY.cloudModel,
+    generalizeAmounts: get('redline_generalize_amounts') !== 'false',
   };
 }

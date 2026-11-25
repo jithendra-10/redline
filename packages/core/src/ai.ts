@@ -6,6 +6,7 @@ import {
   type GenerativeModel,
 } from 'firebase/ai';
 import type { Policy } from './policy';
+import { isPlaceholder } from './placeholders';
 import { ALL_ENTITY_TYPES, SEMANTIC_TYPES, type Entity, type EntityType, type RiskReport, type StepLocation } from './types';
 
 /**
@@ -85,6 +86,7 @@ List each distinct span once. Skip job titles and generic words.`;
 const RISK_SYSTEM = `You are a privacy reviewer. The text has ALREADY been redacted: values like [PERSON_1] are placeholders.
 Judge whether a reader could still re-identify a specific person or organization from what remains
 (unique roles, small-group descriptors, rare events, exact dates, locations, combinations of quasi-identifiers).
+Placeholders may carry a magnitude hint like [FINANCIAL_1 · $1M–10M]; that hint is intentional.
 Return risk (low/medium/high), short reasons, and suggestedRedactions: verbatim spans from the text that should also be redacted.
 Never suggest placeholders themselves.`;
 
@@ -175,7 +177,7 @@ export async function checkReidRisk(riskChecker: GenerativeModel, redacted: stri
     risk: parsed.risk ?? 'medium',
     reasons: parsed.reasons ?? [],
     suggestedRedactions: (parsed.suggestedRedactions ?? []).filter(
-      (s) => s.text && !/^\[[A-Z_]+_\d+\]$/.test(s.text) && redacted.includes(s.text),
+      (s) => s.text && !isPlaceholder(s.text) && redacted.includes(s.text),
     ),
     location: locationOf(res.response.inferenceSource, 'in_cloud'),
     ms: Math.round(performance.now() - t0),

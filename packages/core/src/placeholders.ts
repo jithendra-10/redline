@@ -11,13 +11,17 @@ export class PlaceholderMap {
   /** Lowercased value -> placeholder, for aliases such as a surname on its own. */
   readonly aliasTo = new Map<string, string>();
 
+  constructor(private readonly opts: { generalizeAmounts?: boolean } = {}) {}
+
   placeholderFor(entity: Entity): string {
     const key = entity.text.toLowerCase();
     const existing = this.byValue.get(key);
     if (existing) return existing;
     const n = (this.counters.get(entity.type) ?? 0) + 1;
     this.counters.set(entity.type, n);
-    const ph = `[${entity.type}_${n}]`;
+    // Utility-preserving redaction: keep the order of magnitude, drop the exact value.
+    const range = entity.type === 'FINANCIAL' && this.opts.generalizeAmounts ? moneyRange(entity.text) : null;
+    const ph = range ? `[${entity.type}_${n} · ${range}]` : `[${entity.type}_${n}]`;
     this.byValue.set(key, ph);
     this.mapping[ph] = entity.text;
     return ph;
@@ -37,7 +41,34 @@ export class PlaceholderMap {
   }
 }
 
-const escapeRegex = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+/** Matches any Redline placeholder, with or without a range hint: [PERSON_1], [FINANCIAL_1 · $1M–10M]. */
+export const PLACEHOLDER_RE = /\[[A-Z_]+_\d+(?: · [^\]]+)?\]/g;
+export const isPlaceholder = (s: string) => new RegExp(`^${PLACEHOLDER_RE.source}$`).test(s);
+
+const MULTIPLIERS: Array<[RegExp, number]> = [
+  [/\b(?:billion|bn)\b|\dB\b/i, 1e9],
+  [/\bcrores?\b/i, 1e7],
+  [/\b(?:million|mn)\b|\dM\b/, 1e6],
+  [/\blakhs?\b/i, 1e5],
+  [/\dk\b|\dK\b/, 1e3],
+];
+
+const fmt = (sym: string, v: number) =>
+  v >= 1e9 ? `${sym}${v / 1e9}B` : v >= 1e6 ? `${sym}${v / 1e6}M` : v >= 1e3 ? `${sym}${v / 1e3}K` : `${sym}${v}`;
+
+/** "$4.2M" -> "$1M–10M"; "₹12 lakh" -> "₹1M–10M"; "€900" -> "€100–1K". */
+export function moneyRange(amount: string): string | null {
+  const num = amount.match(/\d+(?:,\d+)*(?:\.\d+)?/);
+  if (!num) return null;
+  let value = Number(num[0].replace(/,/g, ''));
+  for (const [re, mult] of MULTIPLIERS) if (re.test(amount)) { value *= mult; break; }
+  if (!Number.isFinite(value) || value <= 0) return null;
+  const sym = amount.match(/[$€£₹]/)?.[0] ?? amount.match(/USD|EUR|GBP|INR|Rs/)?.[0]?.concat(' ') ?? '';
+  const lo = 10 ** Math.floor(Math.log10(value));
+  return `${fmt(sym, lo)}–${fmt('', lo * 10)}`;
+}
+
+const escapeRegex =(s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 const HONORIFICS = new Set(['mr', 'mrs', 'ms', 'miss', 'dr', 'prof', 'sir', 'madam', 'mx']);
 
@@ -62,12 +93,29 @@ export function applyRedactions(text: string, entities: Entity[], map: Placehold
   const ordered = [...unique.values()].sort(
     (a, b) => text.toLowerCase().indexOf(a.text.toLowerCase()) - text.toLowerCase().indexOf(b.text.toLowerCase()),
   );
-  const replacements: Array<[string, string]> = [];
-  for (const e of ordered) replacements.push([e.text, map.placeholderFor(e)]);
+  // Nano sometimes returns "Ms. Shah" as its own person. If every name part of a
+  // PERSON is contained in a fuller PERSON's name, it's the same person.
+  const persons = ordered.filter((e) => e.type === 'PERSON');
+  const canonical = new Map<Entity, Entity>();
+  for (const e of persons) {
+    const parts = nameParts(e.text).map((p) => p.toLowerCase());
+    if (!parts.length) continue;
+    const fuller = persons
+      .filter((o) => o !== e && nameParts(o.text).length > parts.length)
+      .find((o) => {
+        const op = new Set(nameParts(o.text).map((p) => p.toLowerCase()));
+        return parts.every((p) => op.has(p));
+      });
+    if (fuller) canonical.set(e, fuller);
+  }
 
-  // A person's surname or first name alone ("Ms. Shah") maps to the same placeholder.
+  const replacements: Array<[string, string]> = [];
+  for (const e of ordered) if (!canonical.has(e)) replacements.push([e.text, map.placeholderFor(e)]);
+  for (const [e, full] of canonical) map.alias(e.text, map.placeholderFor(full));
+
+  // A person's surname or first name alone ("Shah") maps to the same placeholder.
   for (const e of ordered) {
-    if (e.type !== 'PERSON') continue;
+    if (e.type !== 'PERSON' || canonical.has(e)) continue;
     const ph = map.placeholderFor(e);
     for (const part of nameParts(e.text)) {
       if (map.has(part)) continue;
@@ -89,7 +137,7 @@ export function applyRedactions(text: string, entities: Entity[], map: Placehold
 
 /** Swap placeholders back to real values. Runs locally only. */
 export function rehydrate(text: string, mapping: Record<string, string>): string {
-  return text.replace(/\[[A-Z_]+_\d+\]/g, (ph) => mapping[ph] ?? ph);
+  return text.replace(PLACEHOLDER_RE, (ph) => mapping[ph] ?? ph);
 }
 
 /**

@@ -122,8 +122,9 @@ export function useRedline(config: RedlineConfig | null) {
       addRedactions(
         result,
         suggestions.map<Entity>((s) => ({ ...s, confidence: 1, source: 'cloud_suggestion' })),
+        policy,
       ),
-    [],
+    [policy],
   );
 
   return {

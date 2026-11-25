@@ -75,3 +75,4 @@ body { margin: 0; background: var(--rl-bg); color: var(--rl-ink); font: 15px/1.5
 .rl-pulse { animation: rl-pulse 1.2s ease-in-out infinite; }
 @keyframes rl-pulse { 50% { opacity: .55; } }
 @media (prefers-reduced-motion: reduce) { .rl-pulse { animation: none; } }
+.rl-provisional { opacity: .55; transition: opacity .3s; }
