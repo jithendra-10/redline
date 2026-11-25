@@ -3,6 +3,7 @@ import {
   CustomProvider,
   initializeAppCheck,
   ReCaptchaEnterpriseProvider,
+  ReCaptchaV3Provider,
   type AppCheck,
 } from 'firebase/app-check';
 import { getAI, GoogleAIBackend, type AI } from 'firebase/ai';
@@ -21,6 +22,8 @@ export interface RedlineConfig {
   appCheck: {
     /** Web app only. Chrome extensions cannot load reCAPTCHA (MV3 remote-code ban). */
     recaptchaEnterpriseSiteKey?: string;
+    /** Web app only. Classic reCAPTCHA v3 alternative (no billing account needed). */
+    recaptchaV3SiteKey?: string;
     /** Registered in Firebase console > App Check > Manage debug tokens. */
     debugToken?: string;
   };
@@ -45,6 +48,8 @@ export function initRedline(cfg: RedlineConfig): RedlineFirebase {
   // CustomProvider that never loads remote scripts; the debug token is what gets exchanged.
   const provider = cfg.appCheck.recaptchaEnterpriseSiteKey
     ? new ReCaptchaEnterpriseProvider(cfg.appCheck.recaptchaEnterpriseSiteKey)
+    : cfg.appCheck.recaptchaV3SiteKey
+    ? new ReCaptchaV3Provider(cfg.appCheck.recaptchaV3SiteKey)
     : new CustomProvider({
         getToken: () =>
           Promise.reject(new Error('No App Check attestation provider: set VITE_APPCHECK_DEBUG_TOKEN.')),

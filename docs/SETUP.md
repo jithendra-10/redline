@@ -13,7 +13,9 @@ You need a Firebase project, a web app registered in it, AI Logic enabled, and a
 3. Leave the cloud model as the default. Redline uses `gemini-3.5-flash-lite`, which you can change with the Remote Config key `redline_cloud_model`.
 
 ## 3. App Check (required by AI Logic)
-1. Console → **App Check → Apps → redline-web → reCAPTCHA Enterprise** → create a key for `localhost` (and your Hosting domain later). Put the site key in `VITE_RECAPTCHA_ENTERPRISE_SITE_KEY`.
+1. Console → **AI Logic → Register for App Check** (or **Security → App Check → Apps → redline-web**). Pick one provider:
+   - **reCAPTCHA v3 (simplest, no billing):** go to https://www.google.com/recaptcha/admin/create, choose type *Score based (v3)*, and add domains `localhost`, `redline-hybrid.web.app` and `redline-hybrid.firebaseapp.com`. Paste the **secret key** into the Firebase dialog and the **site key** into `VITE_RECAPTCHA_V3_SITE_KEY`.
+   - **reCAPTCHA Enterprise:** create a Website key with the same domains at https://console.cloud.google.com/security/recaptcha?project=redline-hybrid, paste the key ID into the Firebase dialog and into `VITE_RECAPTCHA_ENTERPRISE_SITE_KEY`.
 2. In the same app row: **⋮ → Manage debug tokens → Add debug token**. Generate a UUID, save it, and put it in `VITE_APPCHECK_DEBUG_TOKEN`. The Chrome extension *needs* this, because extensions can't load reCAPTCHA. The hackathon rules accept debug tokens.
 3. **App Check → APIs → Firebase AI Logic → Enforce**, once the app works.
 

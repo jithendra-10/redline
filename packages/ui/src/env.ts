@@ -15,6 +15,7 @@ export function configFromEnv(env: Record<string, string | undefined>, surface: 
     appCheck: {
       // Extensions can't load reCAPTCHA; they rely on the debug token.
       recaptchaEnterpriseSiteKey: surface === 'web' ? env.VITE_RECAPTCHA_ENTERPRISE_SITE_KEY || undefined : undefined,
+      recaptchaV3SiteKey: surface === 'web' ? env.VITE_RECAPTCHA_V3_SITE_KEY || undefined : undefined,
       debugToken: env.VITE_APPCHECK_DEBUG_TOKEN || undefined,
     },
   };
