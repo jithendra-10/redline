@@ -122,3 +122,34 @@ export function submit(el: Editable): void {
   el.dispatchEvent(new KeyboardEvent('keypress', opts));
   el.dispatchEvent(new KeyboardEvent('keyup', opts));
 }
+
+const norm = (s: string) => s.replace(/\s+/g, ' ').trim();
+
+/**
+ * Replaces the whole composer with `text`, then VERIFIES the composer holds exactly
+ * that text. Rich editors (ChatGPT's ProseMirror) keep their own selection state, so
+ * a DOM-only select-all can leave the original in place and append instead.
+ * Resolves true only when the composer content equals `text`.
+ */
+export async function replaceAllVerified(el: Editable, text: string): Promise<boolean> {
+  el.focus();
+  if (el instanceof HTMLTextAreaElement || el instanceof HTMLInputElement) {
+    el.select();
+  } else {
+    // execCommand goes through the editor's own beforeinput/selection handling.
+    document.execCommand('selectAll');
+  }
+  document.execCommand('delete');
+  await new Promise((r) => setTimeout(r, 30));
+  if (norm(getText(el)) !== '') {
+    // Fallback for editors that ignore execCommand delete: select via DOM and paste over.
+    selectAll(el);
+  }
+  insertText(el, saveSelection(el), text);
+  // Editors apply the paste asynchronously.
+  for (let i = 0; i < 10; i++) {
+    await new Promise((r) => setTimeout(r, 40));
+    if (norm(getText(el)) === norm(text)) return true;
+  }
+  return norm(getText(el)) === norm(text);
+}

@@ -25,7 +25,7 @@ import {
   insertText,
   isSendButton,
   saveSelection,
-  selectAll,
+  replaceAllVerified,
   submit,
   type Editable,
 } from './editable';
@@ -160,9 +160,17 @@ function onOverlayKey(e: KeyboardEvent) {
 }
 
 /** Puts text into the composer: at the caret (paste) or replacing everything (send). */
-function place(target: Editable, mode: Mode, saved: ReturnType<typeof saveSelection>, text: string) {
-  if (mode === 'paste') insertText(target, saved, text);
-  else insertText(target, selectAll(target), text);
+const BLOCKED_SEND =
+  "Redline couldn't safely replace the text in this chat box, so nothing was sent. Clear the box and paste your message instead.";
+
+function showBlocked(target: Editable) {
+  overlay = new Overlay(
+    { onInsertRedacted: () => {}, onInsertOriginal: () => {}, onCancel: () => closeOverlay() },
+    { allowOverride: false, anchor: target.getBoundingClientRect(), mode: 'send', compact: false },
+  );
+  overlayEls = [...document.querySelectorAll('redline-overlay')];
+  window.addEventListener('keydown', onOverlayKey, true);
+  overlay.error(BLOCKED_SEND);
 }
 
 function sendAfterInsert(target: Editable, text: string) {
@@ -203,9 +211,16 @@ function review(text: string, target: Editable, mode: Mode, precomputed?: Redact
         session = merged.session;
         audit('redacted');
         closeOverlay();
-        place(target, mode, saved, merged.redacted);
-        if (mode === 'send') sendAfterInsert(target, merged.redacted);
-        else approvedText = null;
+        if (mode === 'paste') {
+          insertText(target, saved, merged.redacted);
+          approvedText = null;
+        } else {
+          // Safety gate: submit only if the composer now holds exactly the redacted text.
+          void replaceAllVerified(target, merged.redacted).then((ok) => {
+            if (ok) sendAfterInsert(target, merged.redacted);
+            else showBlocked(target);
+          });
+        }
         if (Object.keys(session).length) {
           reveal.show();
           reveal.refresh();
