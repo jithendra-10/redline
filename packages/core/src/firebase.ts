@@ -15,6 +15,9 @@ import {
   onConfigUpdate,
   type RemoteConfig,
 } from 'firebase/remote-config';
+import { connectAuthEmulator, getAuth, signInAnonymously } from 'firebase/auth';
+import { addDoc, collection, connectFirestoreEmulator, getFirestore, serverTimestamp } from 'firebase/firestore';
+import type { AuditEvent } from './audit';
 import { policyFromValues, RC_DEFAULTS, type Policy } from './policy';
 
 export interface RedlineConfig {
@@ -27,6 +30,8 @@ export interface RedlineConfig {
     /** Registered in Firebase console > App Check > Manage debug tokens. */
     debugToken?: string;
   };
+  /** Local development only: talk to the Auth + Firestore emulators (npm run emulators). */
+  useEmulators?: boolean;
 }
 
 export interface RedlineFirebase {
@@ -55,6 +60,11 @@ export function initRedline(cfg: RedlineConfig): RedlineFirebase {
           Promise.reject(new Error('No App Check attestation provider: set VITE_APPCHECK_DEBUG_TOKEN.')),
       });
   const appCheck = initializeAppCheck(app, { provider, isTokenAutoRefreshEnabled: true });
+
+  if (cfg.useEmulators) {
+    connectAuthEmulator(getAuth(app), 'http://127.0.0.1:9099', { disableWarnings: true });
+    connectFirestoreEmulator(getFirestore(app), '127.0.0.1', 8080);
+  }
 
   const ai = getAI(app, { backend: new GoogleAIBackend() });
 
@@ -93,4 +103,15 @@ export async function watchPolicy(
     console.warn('[redline] Remote Config realtime unavailable', e);
     return () => {};
   }
+}
+
+/**
+ * Appends a content-free audit event to Firestore (collection `events`).
+ * The extension signs in anonymously; firestore.rules only accept counts/enums.
+ */
+export async function logAuditEvent(fb: RedlineFirebase, ev: AuditEvent): Promise<void> {
+  const auth = getAuth(fb.app);
+  if (!auth.currentUser) await signInAnonymously(auth);
+  const uid = auth.currentUser!.uid;
+  await addDoc(collection(getFirestore(fb.app), 'events'), { ...ev, uid, ts: serverTimestamp(), v: 1 });
 }

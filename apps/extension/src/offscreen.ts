@@ -11,13 +11,14 @@ import {
   extractEntitiesOnDevice,
   getDeviceStatus,
   initRedline,
+  logAuditEvent,
   redact,
   warmUpDevice,
   watchPolicy,
   type Policy,
 } from '@redline/core';
 import { configFromEnv } from '@redline/ui/src/env';
-import { PORT_NAME, type PolicySnapshot, type WorkerEvent, type WorkerRequest } from './protocol';
+import { PORT_NAME, type BackgroundRequest, type PolicySnapshot, type WorkerEvent, type WorkerRequest } from './protocol';
 
 const config = configFromEnv(import.meta.env, 'extension');
 const fb = config ? initRedline(config) : null;
@@ -81,4 +82,11 @@ chrome.runtime.onConnect.addListener((port) => {
       send({ type: 'error', id: msg.id, message: (e as Error).message });
     }
   });
+});
+
+// Audit events arrive already stripped to counts; write them to Firestore.
+chrome.runtime.onMessage.addListener((msg: BackgroundRequest) => {
+  if (msg.type !== 'audit' || !fb) return false;
+  logAuditEvent(fb, msg.event).catch((e) => console.warn('[redline] audit log failed', e));
+  return false;
 });

@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { detectPatterns, luhnValid } from './detectors';
 import { assertNoLeak, mergeIntoSession, rehydrate } from './placeholders';
 import { birthDecade, moneyRange, safeHint } from './meaning';
+import { buildAuditEvent } from './audit';
 import { attachPromptOptions, runOnDevice, salvageEntityJson, type AbortablePromptOptions } from './ai';
 import type { GenerativeModel } from 'firebase/ai';
 import { DEFAULT_POLICY, policyFromValues } from './policy';
@@ -314,5 +315,24 @@ describe('multi-paste session', () => {
     expect(b.redacted).toBe('[PERSON_2] met [PERSON_1] at [ORG_1 · company]');
     expect(b.session).toEqual({ PERSON_1: 'Priya Shah', ORG_1: 'Acme Corp', PERSON_2: 'Tom Becker' });
     expect(rehydrate('[PERSON_2] emailed [PERSON_1 · client]', b.session)).toBe('Tom Becker emailed Priya Shah');
+  });
+});
+
+describe('audit event', () => {
+  it('contains counts and categories only, never content', async () => {
+    const r = await redact('Our client Priya Shah of Acme Corp owes $4.2M; mail priya@acme.io', DEFAULT_POLICY, {
+      extractLocal: async () => ({
+        entities: [
+          { text: 'Priya Shah', type: 'PERSON', confidence: 0.9, source: 'on_device' },
+          { text: 'Acme Corp', type: 'ORG', confidence: 0.9, source: 'on_device' },
+        ],
+        location: 'on_device',
+      }),
+    });
+    const ev = buildAuditEvent(r, 'redacted', 'Gemini.Google.com');
+    expect(ev).toMatchObject({ site: 'gemini.google.com', action: 'redacted', total: 4, nanoUsed: true, reduced: false });
+    expect(ev.counts).toEqual({ PERSON: 1, ORG: 1, FINANCIAL: 1, EMAIL: 1 });
+    const json = JSON.stringify(ev);
+    for (const secret of ['Priya', 'Shah', 'Acme', '4.2', 'priya@']) expect(json).not.toContain(secret);
   });
 });

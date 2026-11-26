@@ -8,6 +8,7 @@
  */
 import { DEFAULT_POLICY, type Policy } from '@redline/core/src/policy';
 import { mergeIntoSession } from '@redline/core/src/placeholders';
+import { buildAuditEvent, type AuditAction } from '@redline/core/src/audit';
 import type { RedactionResult } from '@redline/core/src/types';
 import { PORT_NAME, type PolicySnapshot, type WorkerEvent } from '../protocol';
 import { editableFrom, insertText, saveSelection, type Editable } from './editable';
@@ -66,6 +67,12 @@ function startRedaction(text: string, target: Editable) {
   let latest: RedactionResult | null = null;
   const id = Math.random().toString(36).slice(2);
 
+  const audit = (action: AuditAction) => {
+    if (!latest) return;
+    const event = buildAuditEvent(latest, action, location.hostname);
+    chrome.runtime.sendMessage({ type: 'audit', event }).catch(() => {});
+  };
+
   const finish = (insert: string | null) => {
     closeOverlay();
     if (insert !== null) insertText(target, saved, insert);
@@ -77,14 +84,21 @@ function startRedaction(text: string, target: Editable) {
         if (!latest) return;
         const merged = mergeIntoSession(session, latest.redacted, latest.mapping);
         session = merged.session;
+        audit('redacted');
         finish(merged.redacted);
         if (Object.keys(session).length) {
           reveal.show();
           reveal.refresh();
         }
       },
-      onInsertOriginal: () => finish(text),
-      onCancel: () => finish(null),
+      onInsertOriginal: () => {
+        audit('original');
+        finish(text);
+      },
+      onCancel: () => {
+        audit('cancelled');
+        finish(null);
+      },
     },
     policy.allowOverride,
     target.getBoundingClientRect(),

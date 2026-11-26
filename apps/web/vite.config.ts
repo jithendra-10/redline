@@ -12,6 +12,7 @@ export default defineConfig({
         main: resolve(__dirname, 'index.html'),
         eval: resolve(__dirname, 'eval.html'),
         mockChat: resolve(__dirname, 'mock-chat.html'),
+        admin: resolve(__dirname, 'admin.html'),
       },
     },
   },

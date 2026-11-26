@@ -2,6 +2,7 @@ export * from './types';
 export * from './detectors';
 export * from './placeholders';
 export * from './meaning';
+export * from './audit';
 export * from './policy';
 export * from './pipeline';
 export * from './ai';

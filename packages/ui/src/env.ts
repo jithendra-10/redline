@@ -18,5 +18,6 @@ export function configFromEnv(env: Record<string, string | undefined>, surface: 
       recaptchaV3SiteKey: surface === 'web' ? env.VITE_RECAPTCHA_V3_SITE_KEY || undefined : undefined,
       debugToken: env.VITE_APPCHECK_DEBUG_TOKEN || undefined,
     },
+    useEmulators: env.VITE_USE_EMULATORS === 'true',
   };
 }

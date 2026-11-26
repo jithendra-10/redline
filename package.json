@@ -2,14 +2,23 @@
   "name": "redline",
   "private": true,
   "version": "0.1.0",
-  "workspaces": ["packages/*", "apps/*"],
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
   "scripts": {
     "dev:web": "npm run dev -w @redline/web",
     "build": "npm run build -w @redline/web && npm run build -w @redline/extension",
     "test": "npm test -w @redline/core",
-    "typecheck": "tsc -p packages/core --noEmit && tsc -p packages/ui --noEmit && tsc -p apps/web --noEmit && tsc -p apps/extension --noEmit"
+    "typecheck": "tsc -p packages/core --noEmit && tsc -p packages/ui --noEmit && tsc -p apps/web --noEmit && tsc -p apps/extension --noEmit",
+    "test:rules": "firebase emulators:exec --only firestore --project demo-redline \"vitest run --config tests/vitest.config.ts\"",
+    "deploy": "npm run build && firebase deploy --only hosting,firestore:rules",
+    "emulators": "firebase emulators:start --only auth,firestore --project redline-hybrid",
+    "dev:web:emu": "npm run dev -w @redline/web -- --mode emulators --port 5174"
   },
   "devDependencies": {
+    "@firebase/rules-unit-testing": "^6.0.0",
+    "firebase-tools": "^15.37.0",
     "typescript": "^5.6.3"
   }
 }

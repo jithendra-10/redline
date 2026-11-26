@@ -22,7 +22,7 @@ import {
 } from '@redline/core';
 
 let singleton: RedlineFirebase | null = null;
-function getFirebase(config: RedlineConfig | null): RedlineFirebase | null {
+export function getFirebase(config: RedlineConfig | null): RedlineFirebase | null {
   if (!config) return null;
   singleton ??= initRedline(config);
   return singleton;

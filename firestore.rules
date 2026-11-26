@@ -1,0 +1,75 @@
+rules_version = '2';
+
+// Redline audit log: counts and categories only, never content.
+// The schema below makes it impossible to store pasted text: every field is a
+// number, a boolean, a fixed enum, or a short hostname.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isAdmin() {
+      return request.auth != null
+        && exists(/databases/$(database)/documents/admins/$(request.auth.uid));
+    }
+
+    function entityTypes() {
+      return ['PERSON', 'ORG', 'CLIENT_ID', 'EMAIL', 'PHONE', 'ADDRESS', 'DATE_OF_BIRTH', 'GOV_ID',
+              'CARD_NUMBER', 'BANK_ACCOUNT', 'MEDICAL_CONDITION', 'MEDICATION', 'FINANCIAL',
+              'PROJECT_CODENAME', 'SECRET_URL'];
+    }
+
+    // Rules can't loop, so each count is checked explicitly: values must be small ints,
+    // never strings (which could smuggle pasted text into the log).
+    function validCounts(c) {
+      return c is map && c.keys().hasOnly(entityTypes()) && c.size() <= 15
+        && (!('PERSON' in c) || (c.PERSON is int && c.PERSON >= 0 && c.PERSON <= 500))
+        && (!('ORG' in c) || (c.ORG is int && c.ORG >= 0 && c.ORG <= 500))
+        && (!('CLIENT_ID' in c) || (c.CLIENT_ID is int && c.CLIENT_ID >= 0 && c.CLIENT_ID <= 500))
+        && (!('EMAIL' in c) || (c.EMAIL is int && c.EMAIL >= 0 && c.EMAIL <= 500))
+        && (!('PHONE' in c) || (c.PHONE is int && c.PHONE >= 0 && c.PHONE <= 500))
+        && (!('ADDRESS' in c) || (c.ADDRESS is int && c.ADDRESS >= 0 && c.ADDRESS <= 500))
+        && (!('DATE_OF_BIRTH' in c) || (c.DATE_OF_BIRTH is int && c.DATE_OF_BIRTH >= 0 && c.DATE_OF_BIRTH <= 500))
+        && (!('GOV_ID' in c) || (c.GOV_ID is int && c.GOV_ID >= 0 && c.GOV_ID <= 500))
+        && (!('CARD_NUMBER' in c) || (c.CARD_NUMBER is int && c.CARD_NUMBER >= 0 && c.CARD_NUMBER <= 500))
+        && (!('BANK_ACCOUNT' in c) || (c.BANK_ACCOUNT is int && c.BANK_ACCOUNT >= 0 && c.BANK_ACCOUNT <= 500))
+        && (!('MEDICAL_CONDITION' in c) || (c.MEDICAL_CONDITION is int && c.MEDICAL_CONDITION >= 0 && c.MEDICAL_CONDITION <= 500))
+        && (!('MEDICATION' in c) || (c.MEDICATION is int && c.MEDICATION >= 0 && c.MEDICATION <= 500))
+        && (!('FINANCIAL' in c) || (c.FINANCIAL is int && c.FINANCIAL >= 0 && c.FINANCIAL <= 500))
+        && (!('PROJECT_CODENAME' in c) || (c.PROJECT_CODENAME is int && c.PROJECT_CODENAME >= 0 && c.PROJECT_CODENAME <= 500))
+        && (!('SECRET_URL' in c) || (c.SECRET_URL is int && c.SECRET_URL >= 0 && c.SECRET_URL <= 500));
+    }
+
+    function validEvent(d) {
+      return d.keys().hasOnly(['uid', 'ts', 'site', 'action', 'counts', 'total', 'nanoMs', 'nanoUsed', 'reduced', 'chars', 'v'])
+        && d.keys().hasAll(['uid', 'ts', 'site', 'action', 'counts', 'total'])
+        && d.uid == request.auth.uid
+        && d.ts == request.time
+        && d.site is string && d.site.size() <= 64 && d.site.matches('^[a-z0-9.-]+$')
+        && d.action in ['redacted', 'original', 'cancelled']
+        && validCounts(d.counts)
+        && d.total is int && d.total >= 0 && d.total <= 500
+        && (!('nanoMs' in d) || (d.nanoMs is int && d.nanoMs >= 0 && d.nanoMs <= 120000))
+        && (!('nanoUsed' in d) || d.nanoUsed is bool)
+        && (!('reduced' in d) || d.reduced is bool)
+        && (!('chars' in d) || (d.chars is int && d.chars >= 0 && d.chars <= 200000))
+        && (!('v' in d) || (d.v is int && d.v < 100));
+    }
+
+    // Any signed-in client (the extension signs in anonymously) may append an event.
+    // Nobody can edit or delete events; only admins can read them.
+    match /events/{id} {
+      allow create: if request.auth != null && validEvent(request.resource.data);
+      allow read: if isAdmin();
+      allow update, delete: if false;
+    }
+
+    // Admins are added by hand in the Firebase console (doc id = their Auth uid).
+    match /admins/{uid} {
+      allow read: if request.auth != null && request.auth.uid == uid;
+      allow write: if false;
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
