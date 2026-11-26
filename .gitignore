@@ -9,3 +9,4 @@ dist/
 !.env.example
 !.env.emulators
 .claude/
+release/

@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Redline — Privacy firewall for AI chat",
   "short_name": "Redline",
-  "version": "0.2.0",
+  "version": "1.0.0",
   "description": "Redacts confidential details on-device with Gemini Nano before you paste into AI chat tools.",
   "minimum_chrome_version": "138",
   "action": {
