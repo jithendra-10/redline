@@ -91,7 +91,7 @@ export function EvalPage({ config }: { config: RedlineConfig | null }) {
           <h2>Summary</h2>
           <table className="rl-table">
             <thead>
-              <tr><th>Run</th><th>Recall</th><th>Leaked samples</th><th>Legal</th><th>Medical</th><th>HR</th><th>Median</th><th>p90</th></tr>
+              <tr><th>Run</th><th>Recall</th><th>Leaked samples</th><th>Legal</th><th>Medical</th><th>HR</th><th>Median</th><th>p90</th><th>Nano retried</th><th>Nano failed</th></tr>
             </thead>
             <tbody>
               {runs.map((r, i) => (
@@ -104,6 +104,8 @@ export function EvalPage({ config }: { config: RedlineConfig | null }) {
                   ))}
                   <td>{(r.summary.medianMs / 1000).toFixed(1)} s</td>
                   <td>{(r.summary.p90Ms / 1000).toFixed(1)} s</td>
+                  <td>{r.summary.nanoRetried}</td>
+                  <td>{r.summary.nanoFailed}</td>
                 </tr>
               ))}
             </tbody>
@@ -131,7 +133,7 @@ export function EvalPage({ config }: { config: RedlineConfig | null }) {
         <section className="rl-card">
           <h2>Misses · {last.label}</h2>
           <table className="rl-table">
-            <thead><tr><th>Sample</th><th>Caught</th><th>Missed spans</th><th>Time</th></tr></thead>
+            <thead><tr><th>Sample</th><th>Caught</th><th>Missed spans</th><th>Time</th><th>Nano</th></tr></thead>
             <tbody>
               {last.scores.map((s) => (
                 <tr key={s.id} className={s.missed.length ? 'rl-miss' : ''}>
@@ -139,6 +141,7 @@ export function EvalPage({ config }: { config: RedlineConfig | null }) {
                   <td>{s.caught}/{s.total}</td>
                   <td>{s.missed.map((m) => `${m.type}: “${m.text}”`).join(' · ') || '—'}</td>
                   <td>{(s.ms / 1000).toFixed(1)} s</td>
+                  <td>{s.nano}</td>
                 </tr>
               ))}
             </tbody>

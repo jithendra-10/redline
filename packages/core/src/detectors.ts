@@ -72,6 +72,12 @@ const DETECTORS: PatternDetector[] = [
     type: 'DATE_OF_BIRTH',
     regex: /\b(?:DOB|D\.O\.B\.|date of birth|born(?: on)?)[:\s]*\d{1,4}[/.-]\d{1,2}[/.-]\d{1,4}\b/gi,
   },
+  // A capitalised name right after an honorific is almost always a person:
+  // "Mr. Reyes", "Dr. Anita Rao", "Hon. Margaret Okonkwo". The honorific itself stays.
+  {
+    type: 'PERSON',
+    regex: /(?<=\b(?:Mr|Mrs|Ms|Miss|Mx|Dr|Prof|Hon|Sir|Dame|Judge|Justice)\.?\s+)[A-Z][a-zA-Z'’-]+(?:\s+[A-Z][a-zA-Z'’-]+){0,2}\b/g,
+  },
 ];
 
 export function detectPatterns(text: string, enabled: Set<EntityType>): Entity[] {

@@ -39,14 +39,29 @@ export async function redact(text: string, policy: Policy, deps: PipelineDeps): 
   let reducedProtection = false;
   t = now();
   if (deps.extractLocal) {
-    try {
-      const r = await deps.extractLocal(text, enabled);
-      const min = thresholdFor(policy);
-      semantic = r.entities.filter((e) => e.confidence >= min);
-      trace.push({ step: 'Gemini Nano entity extraction', location: r.location, ms: Math.round(now() - t), detail: `${semantic.length} found` });
-    } catch (e) {
+    // One retry: in the eval, most misses were whole Nano calls that hung or returned
+    // broken output, not wrong answers. A second attempt usually succeeds.
+    let lastError: Error | null = null;
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      try {
+        const r = await deps.extractLocal(text, enabled);
+        const min = thresholdFor(policy);
+        semantic = r.entities.filter((e) => e.confidence >= min);
+        trace.push({
+          step: 'Gemini Nano entity extraction',
+          location: r.location,
+          ms: Math.round(now() - t),
+          detail: `${semantic.length} found${attempt > 1 ? ' · after retry' : ''}`,
+        });
+        lastError = null;
+        break;
+      } catch (e) {
+        lastError = e as Error;
+      }
+    }
+    if (lastError) {
       reducedProtection = true;
-      trace.push({ step: 'Gemini Nano entity extraction', location: 'skipped', ms: Math.round(now() - t), detail: (e as Error).message });
+      trace.push({ step: 'Gemini Nano entity extraction', location: 'skipped', ms: Math.round(now() - t), detail: `failed twice: ${lastError.message}` });
     }
   } else {
     reducedProtection = true;

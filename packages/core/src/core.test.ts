@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { detectPatterns, luhnValid } from './detectors';
 import { assertNoLeak, rehydrate } from './placeholders';
 import { birthDecade, moneyRange, safeHint } from './meaning';
+import { salvageEntityJson } from './ai';
 import { DEFAULT_POLICY, policyFromValues } from './policy';
 import { redact, reviewRisk } from './pipeline';
 import { ALL_ENTITY_TYPES, type Entity } from './types';
@@ -231,5 +232,41 @@ describe('re-hydration is robust to chatbot rewording', () => {
     expect(rehydrate('Dear [PERSON_1], the [FINANCIAL_1 - $1M-10M] offer… regards to [ person_1 · client ].', mapping))
       .toBe('Dear Priya Shah, the $4.2M offer… regards to Priya Shah.');
     expect(rehydrate('Unknown [PERSON_9] and [not a placeholder]', mapping)).toBe('Unknown [PERSON_9] and [not a placeholder]');
+  });
+});
+
+describe('eval-driven robustness', () => {
+  it('catches names after honorifics without Nano', () => {
+    const t = 'Mr. Reyes will not sign. Dr. Anita Rao referred Mrs. Grace Holloway to Hon. Margaret Okonkwo on 12 May.';
+    const people = detectPatterns(t, all).filter((e) => e.type === 'PERSON').map((e) => e.text);
+    expect(people).toEqual(['Reyes', 'Anita Rao', 'Grace Holloway', 'Margaret Okonkwo']);
+  });
+
+  it('salvages complete entities from cut-off Nano JSON', () => {
+    const raw = '{"e":[{"t":"PERSON","s":"John Miller"},{"t":"ORG","s":"St. Mary\'s Hospital","g":"hospital"},{"t":"MEDICATION","s":"ibru';
+    expect(salvageEntityJson(raw).map((x) => x.s)).toEqual(['John Miller', "St. Mary's Hospital"]);
+    expect(() => salvageEntityJson('garbage')).toThrow();
+  });
+
+  it('retries Nano once after a failure', async () => {
+    let calls = 0;
+    const r = await redact('Talk to Bob Lee today please', DEFAULT_POLICY, {
+      extractLocal: async () => {
+        calls++;
+        if (calls === 1) throw new Error('timed out');
+        return { entities: [{ text: 'Bob Lee', type: 'PERSON', confidence: 0.9, source: 'on_device' }], location: 'on_device' };
+      },
+    });
+    expect(calls).toBe(2);
+    expect(r.redacted).toBe('Talk to [PERSON_1] today please');
+    expect(r.reducedProtection).toBe(false);
+    expect(r.trace.find((s) => s.step.includes('Nano'))?.detail).toContain('after retry');
+  });
+
+  it('merges a pattern-found surname with Nano\'s full name', async () => {
+    const r = await redact('Our client Priya Shah declined. Ms. Shah called.', DEFAULT_POLICY, {
+      extractLocal: async () => ({ entities: [{ text: 'Priya Shah', type: 'PERSON', confidence: 0.9, source: 'on_device' }], location: 'on_device' }),
+    });
+    expect(r.redacted).toBe('Our client [PERSON_1] declined. Ms. [PERSON_1] called.');
   });
 });

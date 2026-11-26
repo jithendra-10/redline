@@ -15,6 +15,13 @@ export function survives(span: string, redacted: string): boolean {
   return new RegExp(`${pre}${escape(span)}${post}`, 'i').test(redacted);
 }
 
+function nanoStatus(result: RedactionResult): SampleScore['nano'] {
+  const step = result.trace.find((t) => t.step.includes('Nano'));
+  if (!step || step.detail === 'No on-device model') return 'off';
+  if (step.location === 'skipped') return 'failed';
+  return step.detail?.includes('after retry') ? 'retried' : 'ok';
+}
+
 export interface SampleScore {
   id: string;
   domain: Sample['domain'];
@@ -23,6 +30,8 @@ export interface SampleScore {
   missed: Array<{ text: string; type: EntityType }>;
   ms: number;
   nanoRan: boolean;
+  /** ok = first try, retried = succeeded on retry, failed = both attempts failed, off = not used. */
+  nano: 'ok' | 'retried' | 'failed' | 'off';
 }
 
 export function scoreSample(sample: Sample, result: RedactionResult, ms: number): SampleScore {
@@ -35,6 +44,7 @@ export function scoreSample(sample: Sample, result: RedactionResult, ms: number)
     missed,
     ms,
     nanoRan: result.trace.some((t) => t.location === 'on_device'),
+    nano: nanoStatus(result),
   };
 }
 
@@ -45,6 +55,8 @@ export interface EvalSummary {
   byDomain: Record<string, { caught: number; total: number }>;
   medianMs: number;
   p90Ms: number;
+  nanoRetried: number;
+  nanoFailed: number;
 }
 
 export function summarize(scores: SampleScore[], samples: Sample[]): EvalSummary {
@@ -72,5 +84,7 @@ export function summarize(scores: SampleScore[], samples: Sample[]): EvalSummary
     byDomain,
     medianMs: pct(0.5),
     p90Ms: pct(0.9),
+    nanoRetried: scores.filter((s) => s.nano === 'retried').length,
+    nanoFailed: scores.filter((s) => s.nano === 'failed').length,
   };
 }

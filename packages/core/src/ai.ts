@@ -141,6 +141,30 @@ function withTimeout<T>(p: Promise<T>, ms: number, what: string): Promise<T> {
   });
 }
 
+/**
+ * Nano's JSON is sometimes cut off or malformed. Instead of discarding the whole
+ * answer, keep every complete {"t":..,"s":..} object that parses on its own.
+ */
+export function salvageEntityJson(raw: string): Array<{ t?: string; s?: string; g?: string }> {
+  try {
+    const parsed = parseJson<{ e?: Array<{ t?: string; s?: string; g?: string }> }>(raw);
+    if (Array.isArray(parsed.e)) return parsed.e;
+  } catch {
+    /* fall through to salvage */
+  }
+  const out: Array<{ t?: string; s?: string; g?: string }> = [];
+  for (const m of raw.matchAll(/\{[^{}]*\}/g)) {
+    try {
+      const obj = JSON.parse(m[0]);
+      if (obj && typeof obj.s === 'string' && typeof obj.t === 'string') out.push(obj);
+    } catch {
+      /* skip broken object */
+    }
+  }
+  if (!out.length) throw new Error('Nano returned no usable JSON');
+  return out;
+}
+
 function parseJson<T>(raw: string): T {
   const cleaned = raw.trim().replace(/^```(?:json)?\s*/i, '').replace(/```$/, '');
   return JSON.parse(cleaned) as T;
@@ -152,15 +176,15 @@ export async function extractEntitiesOnDevice(
   text: string,
   enabled: Set<EntityType>,
 ): Promise<{ entities: Entity[]; location: StepLocation }> {
-  const res = await withTimeout(extractor.generateContent(text), 30_000, 'On-device extraction');
+  const res = await withTimeout(extractor.generateContent(text), 15_000, 'On-device extraction');
   const location = locationOf(res.response.inferenceSource, 'on_device');
   if (location !== 'on_device') {
     throw new Error('Redline privacy invariant: raw-text extraction did not run on-device.');
   }
-  const parsed = parseJson<{ e?: Array<{ t?: string; s?: string; g?: string }> }>(res.response.text());
+  const items = salvageEntityJson(res.response.text());
   const seen = new Set<string>();
   const entities: Entity[] = [];
-  for (const item of parsed.e ?? []) {
+  for (const item of items) {
     const span = item.s?.trim();
     const type = item.t as EntityType;
     if (!span || !enabled.has(type)) continue;
