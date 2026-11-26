@@ -15,6 +15,10 @@ export interface Policy {
   cloudModel: string;
   /** Keep meaning in placeholders: [ORG_1 · hospital], [FINANCIAL_1 · $1M–10M]. Off = bare [ORG_1]. */
   keepMeaning: boolean;
+  /** Skip the card (insert/send untouched) when nothing clearly sensitive is found. */
+  quietMode: boolean;
+  /** Also check typed messages when the user presses Enter / Send. */
+  checkOnSend: boolean;
 }
 
 export const DEFAULT_POLICY: Policy = {
@@ -29,6 +33,8 @@ export const DEFAULT_POLICY: Policy = {
   nanoConfidenceThreshold: 0.5,
   cloudModel: 'gemini-3.5-flash-lite',
   keepMeaning: true,
+  quietMode: true,
+  checkOnSend: true,
 };
 
 /** Remote Config keys and their in-app defaults (strings, as RC stores them). */
@@ -42,6 +48,8 @@ export const RC_DEFAULTS: Record<string, string | number | boolean> = {
   redline_nano_confidence_threshold: DEFAULT_POLICY.nanoConfidenceThreshold,
   redline_cloud_model: DEFAULT_POLICY.cloudModel,
   redline_keep_meaning: DEFAULT_POLICY.keepMeaning,
+  redline_quiet_mode: DEFAULT_POLICY.quietMode,
+  redline_check_on_send: DEFAULT_POLICY.checkOnSend,
 };
 
 function parseList<T extends string>(raw: string, fallback: T[], allowed?: readonly string[]): T[] {
@@ -74,5 +82,7 @@ export function policyFromValues(get: (key: string) => string): Policy {
     nanoConfidenceThreshold: num('redline_nano_confidence_threshold', DEFAULT_POLICY.nanoConfidenceThreshold),
     cloudModel: get('redline_cloud_model') || DEFAULT_POLICY.cloudModel,
     keepMeaning: get('redline_keep_meaning') !== 'false',
+    quietMode: get('redline_quiet_mode') !== 'false',
+    checkOnSend: get('redline_check_on_send') !== 'false',
   };
 }

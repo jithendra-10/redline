@@ -99,7 +99,13 @@ export async function redact(text: string, policy: Policy, deps: PipelineDeps): 
         const r = await deps.extractLocal(text, enabled);
         const min = thresholdFor(policy);
         semantic = withoutPatternOverlap(
-          r.entities.filter((e) => e.confidence >= min && !isPlainDate(e.text)),
+          r.entities.filter(
+            (e) =>
+              e.confidence >= min &&
+              !isPlainDate(e.text) &&
+              // Names don't contain digits: Nano sometimes tags "10k" or "$500" as a PERSON.
+              !(e.type === 'PERSON' && /\d/.test(e.text)),
+          ),
           patternEntities,
           text,
         );

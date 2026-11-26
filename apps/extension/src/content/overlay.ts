@@ -18,6 +18,8 @@ const CSS = `
   .card { --bg:#1f1d17; --ink:#f1ede2; --muted:#a39d8e; --line:#3a362d; --red:#ff5468; --redsoft:#3a1a1f;
           --green:#5fd39a; --greensoft:#16301f; --amber:#3a3018; }
 }
+.card.compact { width: auto; max-width: min(320px, calc(100vw - 32px)); padding: 8px 10px; gap: 6px; }
+.card.compact .row button { padding: 5px 8px; font-size: 12px; }
 @keyframes in { from { opacity: 0; transform: translateY(8px); } }
 @media (prefers-reduced-motion: reduce) { .card { animation: none; } .pulse { animation: none !important; } }
 .head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
@@ -81,7 +83,19 @@ export class Overlay {
   private result: RedactionResult | null = null;
   private risk: RiskState = { state: 'idle' };
 
-  constructor(private actions: OverlayActions, private allowOverride: boolean, anchor?: DOMRect) {
+  private allowOverride: boolean;
+  private mode: 'paste' | 'send';
+  /** Quiet mode: only a small "checking" chip until we know the text is sensitive. */
+  private compact: boolean;
+
+  constructor(
+    private actions: OverlayActions,
+    opts: { allowOverride: boolean; anchor?: DOMRect; mode: 'paste' | 'send'; compact: boolean },
+  ) {
+    this.allowOverride = opts.allowOverride;
+    this.mode = opts.mode;
+    this.compact = opts.compact;
+    const anchor = opts.anchor;
     const style = document.createElement('style');
     style.textContent = CSS;
     this.card = document.createElement('div');
@@ -126,8 +140,23 @@ export class Overlay {
     else {
       this.pendingInsert = true;
       const btn = this.root.querySelector<HTMLButtonElement>('[data-a="redacted"]');
-      if (btn) btn.textContent = 'Inserting when Nano finishes…';
+      if (btn) btn.textContent = this.mode === 'send' ? 'Sending when Nano finishes…' : 'Inserting when Nano finishes…';
     }
+  }
+
+  /** Esc: same as clicking Cancel (so it's logged). */
+  requestCancel() {
+    this.actions.onCancel();
+  }
+
+  /** Quiet mode found something sensitive: show the full card. */
+  expand() {
+    if (!this.compact) return;
+    this.compact = false;
+    // Enter pressed while only the chip was visible must not auto-send something the
+    // user hasn't seen: once sensitive data is shown, they decide explicitly.
+    this.pendingInsert = false;
+    this.render(this.result);
   }
 
   setRisk(risk: RiskState) {
@@ -140,6 +169,17 @@ export class Overlay {
   }
 
   private render(r: RedactionResult | null) {
+    const verb = this.mode === 'send' ? 'Send' : 'Insert';
+    if (this.compact) {
+      this.card.classList.add('compact');
+      this.card.innerHTML = `
+        <div class="head"><span class="logo">Redline</span>
+        <span class="chip pulse">🔒 Checking on-device…</span></div>
+        <div class="row"><button data-a="cancel">Cancel <kbd>Esc</kbd></button></div>`;
+      this.bind();
+      return;
+    }
+    this.card.classList.remove('compact');
     const count = r ? Object.keys(r.mapping).length : 0;
     const nanoStep = r?.trace.find((s) => s.step.includes('Nano'));
     const status = !r
@@ -162,8 +202,8 @@ export class Overlay {
       }</div>
       ${r && this.final ? this.riskHtml() : ''}
       <div class="row">
-        <button class="primary" data-a="redacted" ${r ? '' : 'disabled'}>${this.pendingInsert ? 'Inserting when Nano finishes…' : 'Insert redacted'} <kbd>Enter</kbd></button>
-        ${this.allowOverride ? `<button data-a="original">Insert original</button>` : ''}
+        <button class="primary" data-a="redacted" ${r ? '' : 'disabled'}>${this.pendingInsert ? `${verb === 'Send' ? 'Sending' : 'Inserting'} when Nano finishes…` : `${verb} redacted`} <kbd>Enter</kbd></button>
+        ${this.allowOverride ? `<button data-a="original">${verb} original</button>` : ''}
         <button data-a="cancel">Cancel <kbd>Esc</kbd></button>
       </div>`;
     this.bind();

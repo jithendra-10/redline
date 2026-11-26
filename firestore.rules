@@ -44,7 +44,7 @@ service cloud.firestore {
         && d.uid == request.auth.uid
         && d.ts == request.time
         && d.site is string && d.site.size() <= 64 && d.site.matches('^[a-z0-9.-]+$')
-        && d.action in ['redacted', 'original', 'cancelled']
+        && d.action in ['redacted', 'original', 'cancelled', 'clean']
         && validCounts(d.counts)
         && d.total is int && d.total >= 0 && d.total <= 500
         && (!('nanoMs' in d) || (d.nanoMs is int && d.nanoMs >= 0 && d.nanoMs <= 120000))

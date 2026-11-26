@@ -1,7 +1,8 @@
 import { placeholderKey } from './placeholders';
 import type { EntityType, RedactionResult } from './types';
 
-export type AuditAction = 'redacted' | 'original' | 'cancelled';
+/** clean = nothing sensitive found, passed through untouched (quiet mode). */
+export type AuditAction = 'redacted' | 'original' | 'cancelled' | 'clean';
 
 /**
  * A privacy-safe audit event: counts and categories only, never content.

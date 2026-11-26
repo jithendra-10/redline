@@ -3,6 +3,7 @@ import { detectPatterns, luhnValid } from './detectors';
 import { assertNoLeak, mergeIntoSession, rehydrate } from './placeholders';
 import { birthDecade, moneyRange, safeHint } from './meaning';
 import { buildAuditEvent } from './audit';
+import { needsReview } from './quiet';
 import { attachPromptOptions, cleanSuggestions, runOnDevice, salvageEntityJson, type AbortablePromptOptions } from './ai';
 import type { GenerativeModel } from 'firebase/ai';
 import { DEFAULT_POLICY, policyFromValues } from './policy';
@@ -412,5 +413,29 @@ describe('plain dates are not redacted by Nano', () => {
       }),
     });
     expect(r.redacted).toBe('[PERSON_1] needs to vacate by November 30, effective Friday.');
+  });
+});
+
+describe('quiet mode', () => {
+  const run = (text: string, entities: Array<{ text: string; type: Entity['type'] }>) =>
+    redact(text, DEFAULT_POLICY, {
+      extractLocal: async () => ({ location: 'on_device', entities: entities.map((e) => ({ ...e, confidence: 0.9, source: 'on_device' as const })) }),
+    });
+
+  it('lets an everyday question through: money, a city, an org', async () => {
+    const r = await run('how to get 10k on youtube, I live in los angeles, budget of 1k $', [
+      { text: '10k', type: 'PERSON' },
+      { text: 'youtube', type: 'ORG' },
+      { text: 'los angeles', type: 'ADDRESS' },
+    ]);
+    expect(r.entities.some((e) => e.text === '10k')).toBe(false); // digits are never a name
+    expect(needsReview(r)).toBe(false);
+  });
+
+  it('shows the card for real identifiers', async () => {
+    expect(needsReview(await run('Email bob@acme.io about it', []))).toBe(true);
+    expect(needsReview(await run('Visit Priya Shah tomorrow', [{ text: 'Priya Shah', type: 'PERSON' }]))).toBe(true);
+    expect(needsReview(await run('I live at 203 Main Street', [{ text: '203 Main Street', type: 'ADDRESS' }]))).toBe(true);
+    expect(needsReview(await run('Patient has leukemia', [{ text: 'leukemia', type: 'MEDICAL_CONDITION' }]))).toBe(true);
   });
 });

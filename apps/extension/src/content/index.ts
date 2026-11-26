@@ -1,22 +1,43 @@
 /**
  * Redline content script (AI chat sites).
  *
- * Intercepts large pastes into the chat input, sends the text over an
- * extension-internal port to the offscreen worker (Gemini Nano, on-device),
- * shows the live redaction, and inserts the redacted version on Enter.
- * The placeholder -> value mapping stays in this tab's memory only.
+ * Two triggers, one flow:
+ *  - PASTE: a large paste into the chat box is held, redacted on-device, then inserted.
+ *  - SEND:  a typed message is checked when the user presses Enter / clicks Send.
+ *
+ * Quiet mode (default): while Gemini Nano checks, only a small chip shows. If nothing
+ * sensitive is found, the text goes through untouched; the full card appears only when
+ * a person, ID, contact, health detail etc. is detected.
+ *
+ * The raw text goes only to the extension's own offscreen worker (on-device). The
+ * placeholder -> value mapping stays in this tab's memory.
  */
 import { DEFAULT_POLICY, type Policy } from '@redline/core/src/policy';
 import { mergeIntoSession } from '@redline/core/src/placeholders';
 import { buildAuditEvent, type AuditAction } from '@redline/core/src/audit';
 import { addRedactions } from '@redline/core/src/pipeline';
+import { needsReview } from '@redline/core/src/quiet';
 import type { RedactionResult } from '@redline/core/src/types';
 import { PORT_NAME, type PolicySnapshot, type WorkerEvent } from '../protocol';
-import { editableFrom, insertText, saveSelection, type Editable } from './editable';
+import {
+  editableFrom,
+  findSendButton,
+  getText,
+  insertText,
+  isSendButton,
+  saveSelection,
+  selectAll,
+  submit,
+  type Editable,
+} from './editable';
 import { Overlay } from './overlay';
 import { Reveal } from './reveal';
 
+type Mode = 'paste' | 'send';
+
 let policy: Policy = DEFAULT_POLICY;
+let pausedSites: string[] = [];
+
 /** Runs a chrome.* call, ignoring "Extension context invalidated" from stale tabs. */
 function safely<T>(fn: () => T): T | undefined {
   try {
@@ -26,22 +47,31 @@ function safely<T>(fn: () => T): T | undefined {
   }
 }
 
-safely(() => chrome.storage.local.get('redlinePolicy'))?.then((v) => {
+safely(() => chrome.storage.local.get(['redlinePolicy', 'redlinePausedSites']))?.then((v) => {
   const snap = v.redlinePolicy as PolicySnapshot | undefined;
-  if (snap?.policy) policy = snap.policy;
+  if (snap?.policy) policy = { ...DEFAULT_POLICY, ...snap.policy };
+  pausedSites = (v.redlinePausedSites as string[] | undefined) ?? [];
 });
-safely(() => chrome.storage.onChanged.addListener((changes) => {
-  const snap = changes.redlinePolicy?.newValue as PolicySnapshot | undefined;
-  if (snap?.policy) policy = snap.policy;
-}));
+safely(() =>
+  chrome.storage.onChanged.addListener((changes) => {
+    const snap = changes.redlinePolicy?.newValue as PolicySnapshot | undefined;
+    if (snap?.policy) policy = { ...DEFAULT_POLICY, ...snap.policy };
+    if (changes.redlinePausedSites) pausedSites = (changes.redlinePausedSites.newValue as string[]) ?? [];
+  }),
+);
 
 let session: Record<string, string> = {};
 let overlay: Overlay | null = null;
 let overlayEls: Element[] = [];
+/** Text the user already approved (redacted or original) — never re-checked on send. */
+let approvedText: string | null = null;
+let lastComposer: Editable | null = null;
 const reveal = new Reveal(() => session, () => overlayEls);
 
+const host = location.hostname;
+
 function siteAllowed(): boolean {
-  const host = location.hostname;
+  if (pausedSites.includes(host)) return false;
   if (host === 'localhost' || host === '127.0.0.1') return true; // local demo / mock chat page
   return policy.siteAllowlist.some((s) => host === s || host.endsWith(`.${s}`));
 }
@@ -50,7 +80,7 @@ function siteAllowed(): boolean {
 const extensionAlive = () => typeof chrome !== 'undefined' && !!chrome.runtime?.id;
 
 const RELOAD_MESSAGE =
-  'Redline was updated. Reload this page (F5) to keep protecting your pastes. Your text was not inserted.';
+  'Redline was updated. Reload this page (F5) to keep protecting your messages. Nothing was sent or inserted.';
 
 async function ensureWorker(): Promise<void> {
   if (!extensionAlive()) throw new Error(RELOAD_MESSAGE);
@@ -62,38 +92,52 @@ function closeOverlay() {
   overlay?.destroy();
   overlay = null;
   overlayEls = [];
-  window.removeEventListener('keydown', onKey, true);
+  window.removeEventListener('keydown', onOverlayKey, true);
 }
 
-function onKey(e: KeyboardEvent) {
+function onOverlayKey(e: KeyboardEvent) {
   if (!overlay || e.isComposing) return;
   if (e.key === 'Enter' && !e.shiftKey) {
-    // Stop the chat site from sending the (empty) message.
+    // Stop the chat site from sending while Redline is deciding.
     e.preventDefault();
     e.stopImmediatePropagation();
     overlay.requestInsert();
   } else if (e.key === 'Escape') {
     e.preventDefault();
     e.stopImmediatePropagation();
-    closeOverlay();
+    overlay.requestCancel();
   }
 }
 
-function startRedaction(text: string, target: Editable) {
+/** Puts text into the composer: at the caret (paste) or replacing everything (send). */
+function place(target: Editable, mode: Mode, saved: ReturnType<typeof saveSelection>, text: string) {
+  if (mode === 'paste') insertText(target, saved, text);
+  else insertText(target, selectAll(target), text);
+}
+
+function sendAfterInsert(target: Editable, text: string) {
+  approvedText = text;
+  // Editors (ProseMirror, Quill, Lexical) update their state asynchronously.
+  setTimeout(() => submit(target), 60);
+}
+
+function review(text: string, target: Editable, mode: Mode) {
   const saved = saveSelection(target);
   let latest: RedactionResult | null = null;
   const id = Math.random().toString(36).slice(2);
 
   const audit = (action: AuditAction) => {
-    if (!latest) return;
-    if (!extensionAlive()) return;
-    const event = buildAuditEvent(latest, action, location.hostname);
+    if (!latest || !extensionAlive()) return;
+    const event = buildAuditEvent(latest, action, host);
     safely(() => chrome.runtime.sendMessage({ type: 'audit', event }))?.catch(() => {});
   };
 
-  const finish = (insert: string | null) => {
+  /** Nothing sensitive (quiet mode): let the original through untouched. */
+  const passThrough = () => {
+    audit('clean');
     closeOverlay();
-    if (insert !== null) insertText(target, saved, insert);
+    if (mode === 'paste') insertText(target, saved, text);
+    else sendAfterInsert(target, text);
   };
 
   overlay = new Overlay(
@@ -103,7 +147,10 @@ function startRedaction(text: string, target: Editable) {
         const merged = mergeIntoSession(session, latest.redacted, latest.mapping);
         session = merged.session;
         audit('redacted');
-        finish(merged.redacted);
+        closeOverlay();
+        place(target, mode, saved, merged.redacted);
+        if (mode === 'send') sendAfterInsert(target, merged.redacted);
+        else approvedText = null;
         if (Object.keys(session).length) {
           reveal.show();
           reveal.refresh();
@@ -111,11 +158,13 @@ function startRedaction(text: string, target: Editable) {
       },
       onInsertOriginal: () => {
         audit('original');
-        finish(text);
+        closeOverlay();
+        if (mode === 'paste') insertText(target, saved, text);
+        else sendAfterInsert(target, text);
       },
       onCancel: () => {
         audit('cancelled');
-        finish(null);
+        closeOverlay(); // send mode: the typed text stays in the box for editing
       },
       ...(policy.reidCheckMode === 'off'
         ? {}
@@ -142,12 +191,9 @@ function startRedaction(text: string, target: Editable) {
                 clearTimeout(t);
                 if (ev.type === 'risk-result') overlay?.setRisk({ state: 'done', report: ev.report });
                 else if (ev.type === 'error') overlay?.setRisk({ state: 'error', message: ev.message });
-                port.disconnect();
+                safely(() => port.disconnect());
               });
-              if (safely(() => port.postMessage({ type: 'risk', id: rid, result: latest })) === undefined && !extensionAlive()) {
-                clearTimeout(t);
-                overlay.setRisk({ state: 'error', message: RELOAD_MESSAGE });
-              }
+              safely(() => port.postMessage({ type: 'risk', id: rid, result: latest }));
             },
             onApplySuggestions: (suggestions) => {
               if (!latest || !overlay) return;
@@ -161,41 +207,57 @@ function startRedaction(text: string, target: Editable) {
             },
           }),
     },
-    policy.allowOverride,
-    target.getBoundingClientRect(),
+    {
+      allowOverride: policy.allowOverride,
+      anchor: target.getBoundingClientRect(),
+      mode,
+      compact: policy.quietMode,
+    },
   );
   overlayEls = [...document.querySelectorAll('redline-overlay')];
-  window.addEventListener('keydown', onKey, true);
+  window.addEventListener('keydown', onOverlayKey, true);
 
   ensureWorker()
     .then(() => {
       const port = chrome.runtime.connect({ name: PORT_NAME });
       const timeout = setTimeout(() => {
-        // Worker never answered: fail safe (nothing inserted until the user decides).
-        overlay?.error('Redline did not respond in time. Your text was not inserted.');
-        port.disconnect();
+        // Worker never answered: fail safe (nothing inserted or sent until the user decides).
+        overlay?.expand();
+        overlay?.error('Redline did not respond in time. Nothing was sent or inserted.');
+        safely(() => port.disconnect());
       }, 60_000);
       port.onMessage.addListener((ev: WorkerEvent) => {
         if (ev.id !== id || !overlay) return;
         if (ev.type === 'error') {
           clearTimeout(timeout);
+          overlay.expand();
           overlay.error(ev.message);
-          port.disconnect();
+          safely(() => port.disconnect());
           return;
         }
         if (ev.type === 'risk-result') return;
         latest = ev.result;
-        overlay.update(ev.result, ev.type === 'final');
         if (ev.type === 'final') {
           clearTimeout(timeout);
-          port.disconnect();
+          safely(() => port.disconnect());
+          // Quiet mode: if Nano ran and found nothing sensitive, don't interrupt the user.
+          if (policy.quietMode && !ev.result.reducedProtection && !needsReview(ev.result)) {
+            passThrough();
+            return;
+          }
+          overlay.expand();
         }
+        overlay.update(ev.result, ev.type === 'final');
       });
       port.postMessage({ type: 'redact', id, text });
     })
-    .catch((e) => overlay?.error(extensionAlive() ? (e as Error).message : RELOAD_MESSAGE));
+    .catch((e) => {
+      overlay?.expand();
+      overlay?.error(extensionAlive() ? (e as Error).message : RELOAD_MESSAGE);
+    });
 }
 
+// ---------------- Trigger 1: paste ----------------
 function onPaste(e: ClipboardEvent) {
   // Our own re-inserted paste is untrusted; let it through.
   if (!e.isTrusted || overlay || !siteAllowed()) return;
@@ -205,8 +267,45 @@ function onPaste(e: ClipboardEvent) {
   if (text.trim().length < policy.minPasteChars) return;
   e.preventDefault();
   e.stopImmediatePropagation();
-  startRedaction(text, target);
+  review(text, target, 'paste');
 }
 
-// Capture phase on window: we see the paste before the site's editor does.
+// ---------------- Trigger 2: send (typed text) ----------------
+/** Returns true if Redline took over this send. */
+function interceptSend(composer: Editable | null, e: Event): boolean {
+  if (!composer || overlay || !policy.checkOnSend || !siteAllowed()) return false;
+  const text = getText(composer).trim();
+  if (text.length < policy.minPasteChars) return false;
+  if (approvedText !== null && text === approvedText.trim()) {
+    approvedText = null; // approved once; the next edit is checked again
+    return false;
+  }
+  e.preventDefault();
+  e.stopImmediatePropagation();
+  review(text, composer, 'send');
+  return true;
+}
+
+function onKeydown(e: KeyboardEvent) {
+  if (!e.isTrusted || e.key !== 'Enter' || e.shiftKey || e.isComposing || e.ctrlKey || e.altKey || e.metaKey) return;
+  interceptSend(editableFrom(e.target), e);
+}
+
+function onClick(e: MouseEvent) {
+  if (!e.isTrusted) return;
+  const btn = isSendButton(e.target);
+  if (!btn || !lastComposer || !lastComposer.isConnected) return;
+  // Only the send button that belongs to the chat box the user was typing in.
+  if (findSendButton(lastComposer) !== btn) return;
+  interceptSend(lastComposer, e);
+}
+
+window.addEventListener('focusin', (e) => {
+  const ed = editableFrom(e.target);
+  if (ed) lastComposer = ed;
+});
+
+// Capture phase on window: we see paste / Enter / Send before the site's editor does.
 window.addEventListener('paste', onPaste, true);
+window.addEventListener('keydown', onKeydown, true);
+window.addEventListener('click', onClick, true);

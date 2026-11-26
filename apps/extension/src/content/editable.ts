@@ -63,3 +63,62 @@ export function insertText(el: Editable, saved: SavedSelection, text: string): v
   // eslint-disable-next-line @typescript-eslint/no-deprecated
   document.execCommand('insertText', false, text);
 }
+
+/** Current text of a chat composer. */
+export function getText(el: Editable): string {
+  if (el instanceof HTMLTextAreaElement || el instanceof HTMLInputElement) return el.value;
+  return el.innerText ?? el.textContent ?? '';
+}
+
+/** Selects the whole composer so the next insert replaces everything. */
+export function selectAll(el: Editable): SavedSelection {
+  el.focus();
+  if (el instanceof HTMLTextAreaElement || el instanceof HTMLInputElement) {
+    el.setSelectionRange(0, el.value.length);
+  } else {
+    const range = document.createRange();
+    range.selectNodeContents(el);
+    const sel = window.getSelection();
+    sel?.removeAllRanges();
+    sel?.addRange(range);
+  }
+  return saveSelection(el);
+}
+
+/** Send buttons on ChatGPT, Gemini, Claude, Copilot, Perplexity and generic forms. */
+const SEND_SELECTORS = [
+  'button[data-testid="send-button"]',
+  'button[aria-label*="Send" i]',
+  'button[aria-label*="Submit" i]',
+  'button.send-button',
+  'button[type="submit"]',
+].join(',');
+
+export function isSendButton(target: EventTarget | null): HTMLButtonElement | null {
+  if (!(target instanceof Element)) return null;
+  return target.closest<HTMLButtonElement>(SEND_SELECTORS);
+}
+
+/** Finds the send button that belongs to this composer (nearest form / container). */
+export function findSendButton(el: Editable): HTMLButtonElement | null {
+  let node: Element | null = el;
+  for (let depth = 0; node && depth < 8; depth++, node = node.parentElement) {
+    const btn = node.querySelector<HTMLButtonElement>(SEND_SELECTORS);
+    if (btn) return btn;
+  }
+  return document.querySelector<HTMLButtonElement>(SEND_SELECTORS);
+}
+
+/** Submits the composer: click its send button, or fall back to an Enter keypress. */
+export function submit(el: Editable): void {
+  const btn = findSendButton(el);
+  if (btn && !btn.disabled) {
+    btn.click();
+    return;
+  }
+  el.focus();
+  const opts = { key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true, cancelable: true };
+  el.dispatchEvent(new KeyboardEvent('keydown', opts));
+  el.dispatchEvent(new KeyboardEvent('keypress', opts));
+  el.dispatchEvent(new KeyboardEvent('keyup', opts));
+}

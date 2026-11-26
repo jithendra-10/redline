@@ -3,6 +3,7 @@ export * from './detectors';
 export * from './placeholders';
 export * from './meaning';
 export * from './audit';
+export * from './quiet';
 export * from './policy';
 export * from './pipeline';
 export * from './ai';
