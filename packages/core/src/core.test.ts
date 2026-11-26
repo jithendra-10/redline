@@ -6,7 +6,7 @@ import { buildAuditEvent } from './audit';
 import { attachPromptOptions, cleanSuggestions, runOnDevice, salvageEntityJson, type AbortablePromptOptions } from './ai';
 import type { GenerativeModel } from 'firebase/ai';
 import { DEFAULT_POLICY, policyFromValues } from './policy';
-import { redact, reviewRisk, withoutPatternOverlap } from './pipeline';
+import { isPlainDate, redact, reviewRisk, withoutPatternOverlap } from './pipeline';
 import { ALL_ENTITY_TYPES, type Entity } from './types';
 
 const all = new Set(ALL_ENTITY_TYPES);
@@ -389,5 +389,28 @@ describe('overlap safety', () => {
       text,
     );
     expect(kept).toHaveLength(1);
+  });
+});
+
+describe('plain dates are not redacted by Nano', () => {
+  it('recognises bare dates, months and weekdays only', () => {
+    for (const d of ['November 30', 'Friday', 'Jan 15', 'Jan 15, 2026', '12 May', 'March 2024', 'Monday, Nov 3rd', '2019'])
+      expect(isPlainDate(d), d).toBe(true);
+    for (const d of ['Project Falcon', 'Mayfield Clinic', 'Nov 30 board vote on Acme', 'Daniel Okafor', 'Augustine'])
+      expect(isPlainDate(d), d).toBe(false);
+  });
+
+  it('keeps the move-out date visible', async () => {
+    const r = await redact('David Kim needs to vacate by November 30, effective Friday.', DEFAULT_POLICY, {
+      extractLocal: async () => ({
+        location: 'on_device',
+        entities: [
+          { text: 'David Kim', type: 'PERSON', confidence: 0.9, source: 'on_device' },
+          { text: 'November 30', type: 'PROJECT_CODENAME', confidence: 0.9, source: 'on_device' },
+          { text: 'Friday', type: 'PROJECT_CODENAME', confidence: 0.9, source: 'on_device' },
+        ],
+      }),
+    });
+    expect(r.redacted).toBe('[PERSON_1] needs to vacate by November 30, effective Friday.');
   });
 });

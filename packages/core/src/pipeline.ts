@@ -18,6 +18,20 @@ function build(text: string, entities: Entity[], keepMeaning: boolean) {
   return { redacted, mapping: map.mapping, aliases: map.aliases };
 }
 
+const MONTH = '(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)';
+const WEEKDAY = '(?:mon|tues?|wed(?:nes)?|thu(?:rs?)?|fri|sat(?:ur)?|sun)(?:day)?';
+const PLAIN_DATE = new RegExp(
+  `^(?:${WEEKDAY},?\\s*)?(?:${MONTH}\\.?\\s+\\d{1,2}(?:st|nd|rd|th)?(?:,?\\s*\\d{4})?|\\d{1,2}(?:st|nd|rd|th)?\\s+${MONTH}(?:,?\\s*\\d{4})?|${MONTH}(?:\\s+\\d{4})?|${WEEKDAY}|\\d{4})$`,
+  'i',
+);
+
+/**
+ * A bare date, month or weekday ("November 30", "Friday", "Jan 15, 2026") doesn't
+ * identify anyone, and hiding it costs the AI meaning. Nano sometimes tags these,
+ * so they're never redacted by the semantic pass (dates of birth have their own pattern).
+ */
+export const isPlainDate = (s: string) => PLAIN_DATE.test(s.trim());
+
 /** Every [start, end) occurrence of `needle` in `text`, case-insensitive. */
 function ranges(text: string, needle: string): Array<[number, number]> {
   const out: Array<[number, number]> = [];
@@ -85,7 +99,7 @@ export async function redact(text: string, policy: Policy, deps: PipelineDeps): 
         const r = await deps.extractLocal(text, enabled);
         const min = thresholdFor(policy);
         semantic = withoutPatternOverlap(
-          r.entities.filter((e) => e.confidence >= min),
+          r.entities.filter((e) => e.confidence >= min && !isPlainDate(e.text)),
           patternEntities,
           text,
         );
