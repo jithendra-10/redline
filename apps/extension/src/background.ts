@@ -26,6 +26,10 @@ async function ensureWorker(): Promise<void> {
 }
 
 chrome.runtime.onMessage.addListener((msg: BackgroundRequest, _sender, sendResponse) => {
+  if (msg.type === 'policy-update') {
+    chrome.storage.local.set({ redlinePolicy: msg.snapshot }).catch(console.error);
+    return false;
+  }
   if (msg.type === 'ensure-worker') {
     ensureWorker()
       .then(() => sendResponse({ ok: true }))

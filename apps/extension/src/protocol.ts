@@ -4,7 +4,10 @@ import type { Policy, RedactionResult } from '@redline/core/src/index';
 export const PORT_NAME = 'redline-redact';
 
 /** content -> background (one-shot) */
-export type BackgroundRequest = { type: 'ensure-worker' } | { type: 'get-policy' };
+export type BackgroundRequest =
+  | { type: 'ensure-worker' }
+  /** offscreen -> background: offscreen documents can't use chrome.storage, so the background saves it. */
+  | { type: 'policy-update'; snapshot: PolicySnapshot };
 
 /** content -> offscreen (over the port) */
 export type WorkerRequest = { type: 'redact'; id: string; text: string };

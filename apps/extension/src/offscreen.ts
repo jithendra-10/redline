@@ -31,23 +31,30 @@ async function refreshDevice() {
   return device;
 }
 
+/** Offscreen documents only get chrome.runtime; the background persists the snapshot. */
+function publishPolicy() {
+  const snapshot: PolicySnapshot = { policy, device };
+  chrome.runtime.sendMessage({ type: 'policy-update', snapshot }).catch(() => {});
+}
+
 async function boot() {
   await refreshDevice();
   if (fb) {
     await watchPolicy(fb.remoteConfig, (p) => {
       policy = p;
       models = createModels(fb.ai, p);
-      chrome.storage.local.set({ redlinePolicy: { policy, device } satisfies PolicySnapshot }).catch(() => {});
+      publishPolicy();
     });
   }
-  chrome.storage.local.set({ redlinePolicy: { policy, device } satisfies PolicySnapshot }).catch(() => {});
+  publishPolicy();
   if (models && device === 'available') {
     warmUpDevice(models.extractor)
       .then((ms) => console.info(`[redline] Nano warm-up ${ms} ms`))
       .catch((e) => console.warn('[redline] Nano warm-up failed', e));
   }
 }
-const ready = boot();
+// Never let a startup problem (e.g. Remote Config offline) block redaction: fall back to defaults.
+const ready = boot().catch((e) => console.warn('[redline] worker boot problem, using defaults', e));
 
 chrome.runtime.onConnect.addListener((port) => {
   if (port.name !== PORT_NAME) return;
