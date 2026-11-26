@@ -109,15 +109,24 @@ export function createModels(ai: AI, policy: Policy) {
 
   const riskMode =
     policy.reidCheckMode === 'on_device' ? InferenceMode.ONLY_ON_DEVICE : InferenceMode.PREFER_IN_CLOUD;
+  // Cloud first (stronger reasoning). If the cloud call fails (network, quota, API off),
+  // the SDK falls back to Gemini Nano, so the reviewer prompt must exist on both sides.
+  // Either way it only ever sees REDACTED text (enforced by reviewRisk / assertNoLeak).
+  const riskPromptOptions: AbortablePromptOptions = { responseConstraint: RISK_SCHEMA };
   const riskChecker = getGenerativeModel(ai, {
     mode: riskMode,
-    onDeviceParams: { createOptions: LANGS, promptOptions: { responseConstraint: RISK_SCHEMA } },
+    onDeviceParams: {
+      createOptions: { ...LANGS, initialPrompts: [{ role: 'system', content: [{ type: 'text', value: RISK_SYSTEM }] }] },
+      promptOptions: riskPromptOptions,
+    },
     inCloudParams: {
       model: policy.cloudModel,
       systemInstruction: RISK_SYSTEM,
       generationConfig: { responseMimeType: 'application/json', responseJsonSchema: RISK_SCHEMA, temperature: 0.2 },
     },
   });
+
+  PROMPT_OPTIONS.set(riskChecker, riskPromptOptions);
 
   return { extractor, riskChecker };
 }
@@ -128,7 +137,7 @@ ADDRESS (street address or specific place), MEDICAL_CONDITION, MEDICATION (drug 
 List each distinct span once. Skip job titles and generic words.
 For MEDICAL_CONDITION, MEDICATION, ORG and ADDRESS also give g: a generic 1-3 word category that keeps the meaning
 but never repeats the span (e.g. leukemia -> "blood cancer", ibrutinib 420mg -> "cancer drug", Acme Corp -> "company",
-12 Baker Street -> "street address"). Omit g for other types.`;
+12 Baker Street -> "street address", Austin -> "city", Bandra, Mumbai -> "neighbourhood"). Omit g for other types.`;
 
 const RISK_SYSTEM = `You are a privacy reviewer. The text has ALREADY been redacted: values like [PERSON_1] are placeholders.
 Judge whether a reader could still re-identify a specific person or organization from what remains
@@ -245,7 +254,7 @@ export async function extractEntitiesOnDevice(
 /** Re-identification risk check. Caller must pass REDACTED text only (enforced in pipeline). */
 export async function checkReidRisk(riskChecker: GenerativeModel, redacted: string): Promise<RiskReport> {
   const t0 = performance.now();
-  const res = await withTimeout(riskChecker.generateContent(redacted), 30_000, 'Re-identification check');
+  const res = await runOnDevice(riskChecker, 30_000, 'Re-identification check', () => riskChecker.generateContent(redacted));
   const parsed = parseJson<Omit<RiskReport, 'location' | 'ms'>>(res.response.text());
   return {
     risk: parsed.risk ?? 'medium',

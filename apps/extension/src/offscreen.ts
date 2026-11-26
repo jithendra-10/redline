@@ -12,7 +12,9 @@ import {
   getDeviceStatus,
   initRedline,
   logAuditEvent,
+  checkReidRisk,
   redact,
+  reviewRisk,
   warmUpDevice,
   watchPolicy,
   type Policy,
@@ -60,7 +62,7 @@ const ready = boot().catch((e) => console.warn('[redline] worker boot problem, u
 chrome.runtime.onConnect.addListener((port) => {
   if (port.name !== PORT_NAME) return;
   port.onMessage.addListener(async (msg: WorkerRequest) => {
-    if (msg.type !== 'redact') return;
+    if (msg.type !== 'redact' && msg.type !== 'risk') return;
     const send = (e: WorkerEvent) => {
       try {
         port.postMessage(e);
@@ -70,6 +72,14 @@ chrome.runtime.onConnect.addListener((port) => {
     };
     try {
       await ready;
+      if (msg.type === 'risk') {
+        const m = models;
+        if (!m) throw new Error('Firebase is not configured for this extension.');
+        // reviewRisk asserts no original value is in the payload before anything leaves the device.
+        const report = await reviewRisk(msg.result, { checkRisk: (r) => checkReidRisk(m.riskChecker, r) });
+        if (report) send({ type: 'risk-result', id: msg.id, report });
+        return;
+      }
       if (device !== 'available') await refreshDevice();
       const m = models;
       const result = await redact(msg.text, policy, {

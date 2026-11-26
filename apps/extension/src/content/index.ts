@@ -9,6 +9,7 @@
 import { DEFAULT_POLICY, type Policy } from '@redline/core/src/policy';
 import { mergeIntoSession } from '@redline/core/src/placeholders';
 import { buildAuditEvent, type AuditAction } from '@redline/core/src/audit';
+import { addRedactions } from '@redline/core/src/pipeline';
 import type { RedactionResult } from '@redline/core/src/types';
 import { PORT_NAME, type PolicySnapshot, type WorkerEvent } from '../protocol';
 import { editableFrom, insertText, saveSelection, type Editable } from './editable';
@@ -99,6 +100,38 @@ function startRedaction(text: string, target: Editable) {
         audit('cancelled');
         finish(null);
       },
+      ...(policy.reidCheckMode === 'off'
+        ? {}
+        : {
+            onCheckRisk: () => {
+              if (!latest || !overlay) return;
+              overlay.setRisk({ state: 'checking' });
+              const rid = Math.random().toString(36).slice(2);
+              const port = chrome.runtime.connect({ name: PORT_NAME });
+              const t = setTimeout(() => {
+                overlay?.setRisk({ state: 'error', message: 'timed out' });
+                port.disconnect();
+              }, 45_000);
+              port.onMessage.addListener((ev: WorkerEvent) => {
+                if (ev.id !== rid) return;
+                clearTimeout(t);
+                if (ev.type === 'risk-result') overlay?.setRisk({ state: 'done', report: ev.report });
+                else if (ev.type === 'error') overlay?.setRisk({ state: 'error', message: ev.message });
+                port.disconnect();
+              });
+              port.postMessage({ type: 'risk', id: rid, result: latest });
+            },
+            onApplySuggestions: (suggestions) => {
+              if (!latest || !overlay) return;
+              latest = addRedactions(
+                latest,
+                suggestions.map((x) => ({ ...x, confidence: 1, source: 'cloud_suggestion' as const })),
+                policy,
+              );
+              overlay.update(latest, true);
+              overlay.setRisk({ state: 'idle' });
+            },
+          }),
     },
     policy.allowOverride,
     target.getBoundingClientRect(),
@@ -122,6 +155,7 @@ function startRedaction(text: string, target: Editable) {
           port.disconnect();
           return;
         }
+        if (ev.type === 'risk-result') return;
         latest = ev.result;
         overlay.update(ev.result, ev.type === 'final');
         if (ev.type === 'final') {

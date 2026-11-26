@@ -1,4 +1,4 @@
-import type { RedactionResult } from '@redline/core/src/types';
+import type { RedactionResult, RiskReport } from '@redline/core/src/types';
 import { PLACEHOLDER_RE } from '@redline/core/src/placeholders';
 
 const CSS = `
@@ -36,6 +36,10 @@ button { font: 600 13px/1 inherit; font-family: inherit; border-radius: 8px; pad
          background: transparent; color: var(--ink); }
 button.primary { background: var(--red); border-color: var(--red); color: #fff; }
 button:disabled { opacity: .5; cursor: default; }
+button.link { border: 0; padding: 4px 0; color: var(--ink); text-decoration: underline; text-underline-offset: 3px; background: none; }
+.risk { border-radius: 8px; padding: 8px 10px; display: grid; gap: 6px; font-size: 13px; background: color-mix(in srgb, var(--line) 35%, transparent); }
+.risk ul { margin: 0; padding-left: 18px; }
+.risk-low { background: var(--greensoft); } .risk-medium { background: var(--amber); } .risk-high { background: var(--redsoft); }
 kbd { font: 11px ui-monospace, Menlo, monospace; opacity: .8; margin-left: 4px; }
 .warnline { font-size: 12px; background: var(--amber); border-radius: 6px; padding: 6px 8px; }
 `;
@@ -57,7 +61,16 @@ export interface OverlayActions {
   onInsertRedacted(): void;
   onInsertOriginal(): void;
   onCancel(): void;
+  /** Absent when policy turns the re-identification check off. */
+  onCheckRisk?: () => void;
+  onApplySuggestions?: (suggestions: RiskReport['suggestedRedactions']) => void;
 }
+
+type RiskState =
+  | { state: 'idle' }
+  | { state: 'checking' }
+  | { state: 'done'; report: RiskReport }
+  | { state: 'error'; message: string };
 
 export class Overlay {
   private host = document.createElement('redline-overlay');
@@ -65,6 +78,8 @@ export class Overlay {
   private card: HTMLDivElement;
   private final = false;
   private pendingInsert = false;
+  private result: RedactionResult | null = null;
+  private risk: RiskState = { state: 'idle' };
 
   constructor(private actions: OverlayActions, private allowOverride: boolean, anchor?: DOMRect) {
     const style = document.createElement('style');
@@ -92,6 +107,7 @@ export class Overlay {
 
   update(result: RedactionResult, final: boolean) {
     this.final = final;
+    this.result = result;
     this.render(result);
     if (final && this.pendingInsert) this.actions.onInsertRedacted();
   }
@@ -112,6 +128,11 @@ export class Overlay {
       const btn = this.root.querySelector<HTMLButtonElement>('[data-a="redacted"]');
       if (btn) btn.textContent = 'Inserting when Nano finishes…';
     }
+  }
+
+  setRisk(risk: RiskState) {
+    this.risk = risk;
+    this.render(this.result);
   }
 
   destroy() {
@@ -139,6 +160,7 @@ export class Overlay {
           ? `Your original text never left this device.${nanoStep?.ms ? ` Nano took ${(nanoStep.ms / 1000).toFixed(1)} s.` : ''}`
           : 'Numbers and emails are already removed; names and companies take a few seconds.'
       }</div>
+      ${r && this.final ? this.riskHtml() : ''}
       <div class="row">
         <button class="primary" data-a="redacted" ${r ? '' : 'disabled'}>${this.pendingInsert ? 'Inserting when Nano finishes…' : 'Insert redacted'} <kbd>Enter</kbd></button>
         ${this.allowOverride ? `<button data-a="original">Insert original</button>` : ''}
@@ -147,12 +169,33 @@ export class Overlay {
     this.bind();
   }
 
+  private riskHtml(): string {
+    if (!this.actions.onCheckRisk) return '';
+    const r = this.risk;
+    if (r.state === 'idle') {
+      return `<div class="row"><button class="link" data-a="risk">Check re-identification risk</button>
+        <span class="meta">Sends only the redacted text above.</span></div>`;
+    }
+    if (r.state === 'checking') return `<div class="risk"><span class="chip pulse">Checking re-identification risk…</span></div>`;
+    if (r.state === 'error') return `<div class="warnline">Risk check unavailable: ${esc(r.message)}</div>`;
+    const rep = r.report;
+    const where = rep.location === 'in_cloud' ? '☁ Gemini in the cloud · redacted text only' : '🔒 Gemini Nano on-device (cloud unavailable)';
+    const sugg = rep.suggestedRedactions;
+    return `<div class="risk risk-${rep.risk}">
+      <div class="row"><strong>Re-identification risk: ${esc(rep.risk.toUpperCase())}</strong><span class="meta">${where} · ${(rep.ms / 1000).toFixed(1)} s</span></div>
+      ${rep.reasons.length ? `<ul>${rep.reasons.slice(0, 3).map((x) => `<li>${esc(x)}</li>`).join('')}</ul>` : ''}
+      ${sugg.length ? `<button data-a="apply">Also redact: ${esc(sugg.map((x) => `“${x.text}”`).join(', '))}</button>` : ''}
+    </div>`;
+  }
+
   private bind() {
     this.root.querySelectorAll<HTMLButtonElement>('button[data-a]').forEach((b) =>
       b.addEventListener('click', () => {
         const a = b.dataset.a;
         if (a === 'redacted') this.requestInsert();
         else if (a === 'original') this.actions.onInsertOriginal();
+        else if (a === 'risk') this.actions.onCheckRisk?.();
+        else if (a === 'apply' && this.risk.state === 'done') this.actions.onApplySuggestions?.(this.risk.report.suggestedRedactions);
         else this.actions.onCancel();
       }),
     );
