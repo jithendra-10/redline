@@ -22,15 +22,22 @@ You need a Firebase project, a web app registered in it, AI Logic enabled, and a
 ## 4. Remote Config (policy)
 Console → **Remote Config → Create configuration**, then add these parameters. Real-time updates reach open clients within seconds.
 
-| Key | Example value |
-|---|---|
-| `redline_strictness` | `balanced` (`lenient` / `strict`) |
-| `redline_entity_types` | `["PERSON","ORG","CLIENT_ID","EMAIL","PHONE","MEDICAL_CONDITION","MEDICATION","FINANCIAL"]` |
-| `redline_reid_check_mode` | `cloud` (`on_device` / `off`) |
-| `redline_min_paste_chars` | `40` |
-| `redline_nano_confidence_threshold` | `0.5` |
-| `redline_cloud_model` | `gemini-3.5-flash-lite` |
-| `redline_keep_meaning` | `true` (hints like `[ORG_1 · hospital]`; `false` = bare placeholders) |
+All keys are optional: a missing key uses the built-in default shown here. Enter values **exactly** as shown (no extra text).
+
+| Key | Data type | Default value | Other allowed values |
+|---|---|---|---|
+| `redline_strictness` | String | `balanced` | `lenient`, `strict` |
+| `redline_keep_meaning` | Boolean | `true` | `false` = bare placeholders like `[ORG_1]` |
+| `redline_allow_override` | Boolean | `true` | `false` hides "Insert original" |
+| `redline_reid_check_mode` | String | `cloud` | `on_device`, `off` |
+| `redline_min_paste_chars` | Number | `40` | any number |
+| `redline_nano_confidence_threshold` | Number | `0.5` | 0–1 |
+| `redline_cloud_model` | String | `gemini-3.5-flash-lite` | any Gemini model id |
+| `redline_entity_types` | JSON | all 15 types | a subset of the list below. **Leaving a type out turns its redaction off.** |
+
+Full entity type list: `["PERSON","ORG","CLIENT_ID","EMAIL","PHONE","ADDRESS","DATE_OF_BIRTH","GOV_ID","CARD_NUMBER","BANK_ACCOUNT","MEDICAL_CONDITION","MEDICATION","FINANCIAL","PROJECT_CODENAME","SECRET_URL"]`
+
+Click **Publish changes** after editing. Open Redline pages and the extension pick it up within seconds.
 
 ## 5. Chrome with Gemini Nano
 - Use Chrome **138+** on desktop (Windows/macOS/Linux) with **22 GB free disk space** and a GPU with more than 4 GB VRAM (or a 16 GB RAM / 4-core CPU).
