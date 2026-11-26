@@ -14,10 +14,12 @@
     "test:rules": "firebase emulators:exec --only firestore --project demo-redline \"vitest run --config tests/vitest.config.ts\"",
     "deploy": "npm run build && firebase deploy --only hosting,firestore:rules",
     "emulators": "firebase emulators:start --only auth,firestore --project redline-hybrid",
-    "dev:web:emu": "npm run dev -w @redline/web -- --mode emulators --port 5174"
+    "dev:web:emu": "npm run dev -w @redline/web -- --mode emulators --port 5174",
+    "icons": "node scripts/icons.mjs"
   },
   "devDependencies": {
     "@firebase/rules-unit-testing": "^6.0.0",
+    "@resvg/resvg-js": "^2.6.2",
     "firebase-tools": "^15.37.0",
     "typescript": "^5.6.3"
   }
