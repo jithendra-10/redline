@@ -95,12 +95,46 @@ export async function runOnDevice<T>(
   return run;
 }
 
-export function createModels(ai: AI, policy: Policy) {
+/** Greedy decoding: same input -> same output. Only Chrome extensions may set these. */
+export interface Sampling {
+  topK: number;
+  temperature: number;
+}
+
+interface LanguageModelWithParams {
+  params?: () => Promise<{ defaultTemperature: number; maxTopK: number } | null>;
+  create: (o: object) => Promise<{ destroy: () => void }>;
+}
+
+/**
+ * Probes whether this context lets us pin Nano to deterministic output.
+ * Returns the options to use, or undefined (web pages, older Chrome) to keep defaults.
+ */
+export async function probeDeterministicSampling(): Promise<Sampling | undefined> {
+  const lm = (globalThis as { LanguageModel?: LanguageModelWithParams }).LanguageModel;
+  if (!lm?.params) return undefined;
+  for (const candidate of [{ topK: 1, temperature: 0 }, { topK: 1, temperature: 0.1 }]) {
+    try {
+      const s = await lm.create({ ...LANGS, ...candidate });
+      s.destroy();
+      return candidate;
+    } catch {
+      /* try the next candidate */
+    }
+  }
+  return undefined;
+}
+
+export function createModels(ai: AI, policy: Policy, sampling?: Sampling) {
   const extractorPromptOptions: AbortablePromptOptions = { responseConstraint: ENTITY_SCHEMA };
   const extractor = getGenerativeModel(ai, {
     mode: InferenceMode.ONLY_ON_DEVICE,
     onDeviceParams: {
-      createOptions: { ...LANGS, initialPrompts: [{ role: 'system', content: [{ type: 'text', value: EXTRACT_SYSTEM }] }] },
+      createOptions: {
+        ...LANGS,
+        ...sampling,
+        initialPrompts: [{ role: 'system', content: [{ type: 'text', value: EXTRACT_SYSTEM }] }],
+      },
       promptOptions: extractorPromptOptions,
     },
   });

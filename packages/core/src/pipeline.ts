@@ -32,6 +32,31 @@ const PLAIN_DATE = new RegExp(
  */
 export const isPlainDate = (s: string) => PLAIN_DATE.test(s.trim());
 
+const GENERIC_WORDS = new Set([
+  'budget', 'street', 'money', 'client', 'clients', 'customer', 'site', 'address', 'salary', 'price', 'cost',
+  'amount', 'company', 'user', 'team', 'manager', 'project', 'case', 'legal', 'office', 'patient', 'doctor',
+  'employee', 'tenant', 'landlord', 'lease', 'contract', 'invoice', 'account', 'bank', 'hospital', 'school',
+]);
+
+/**
+ * Sanity checks on Nano's labels (its output varies run to run):
+ *  - IDs contain digits; names, organisations and codenames are not just numbers.
+ *  - A single generic word ("budget", "client") is never a name or a codename.
+ */
+export function plausibleLabel(e: Entity): boolean {
+  const t = e.text.trim();
+  const digits = (t.match(/\d/g) ?? []).length;
+  if (e.type === 'CLIENT_ID') return digits >= 2;
+  if (!/[A-Za-z]/.test(t)) return false;
+  if (e.type === 'PERSON' && digits > 0) return false; // "10k", "$500" aren't names
+  if ((e.type === 'PERSON' || e.type === 'ORG' || e.type === 'PROJECT_CODENAME') && GENERIC_WORDS.has(t.toLowerCase())) {
+    return false;
+  }
+  // "10k", "1.5M", "5 lakh" are amounts whatever label Nano gave them.
+  if (/^\$?\d+(?:\.\d+)?\s?(?:k|m|mn|bn|million|billion|lakhs?|crores?)\$?$/i.test(t)) return false;
+  return true;
+}
+
 /** Every [start, end) occurrence of `needle` in `text`, case-insensitive. */
 function ranges(text: string, needle: string): Array<[number, number]> {
   const out: Array<[number, number]> = [];
@@ -100,11 +125,7 @@ export async function redact(text: string, policy: Policy, deps: PipelineDeps): 
         const min = thresholdFor(policy);
         semantic = withoutPatternOverlap(
           r.entities.filter(
-            (e) =>
-              e.confidence >= min &&
-              !isPlainDate(e.text) &&
-              // Names don't contain digits: Nano sometimes tags "10k" or "$500" as a PERSON.
-              !(e.type === 'PERSON' && /\d/.test(e.text)),
+            (e) => e.confidence >= min && !isPlainDate(e.text) && plausibleLabel(e),
           ),
           patternEntities,
           text,

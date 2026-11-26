@@ -13,6 +13,7 @@ import {
   initRedline,
   logAuditEvent,
   checkReidRisk,
+  probeDeterministicSampling,
   redact,
   reviewRisk,
   warmUpDevice,
@@ -27,6 +28,8 @@ const fb = config ? initRedline(config) : null;
 
 let policy: Policy = DEFAULT_POLICY;
 let models = fb ? createModels(fb.ai, policy) : null;
+/** Extensions may pin Nano to greedy decoding, so the same text always gets the same result. */
+let sampling: Awaited<ReturnType<typeof probeDeterministicSampling>>;
 let device = 'unsupported';
 
 async function refreshDevice() {
@@ -42,10 +45,15 @@ function publishPolicy() {
 
 async function boot() {
   await refreshDevice();
+  if (device === 'available') {
+    sampling = await probeDeterministicSampling();
+    console.info('[redline] deterministic sampling:', sampling ?? 'not available, using defaults');
+    if (fb) models = createModels(fb.ai, policy, sampling);
+  }
   if (fb) {
     await watchPolicy(fb.remoteConfig, (p) => {
       policy = p;
-      models = createModels(fb.ai, p);
+      models = createModels(fb.ai, p, sampling);
       publishPolicy();
     });
   }

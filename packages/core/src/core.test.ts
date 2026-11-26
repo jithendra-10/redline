@@ -7,7 +7,7 @@ import { needsReview } from './quiet';
 import { attachPromptOptions, cleanSuggestions, runOnDevice, salvageEntityJson, type AbortablePromptOptions } from './ai';
 import type { GenerativeModel } from 'firebase/ai';
 import { DEFAULT_POLICY, policyFromValues } from './policy';
-import { isPlainDate, redact, reviewRisk, withoutPatternOverlap } from './pipeline';
+import { isPlainDate, plausibleLabel, redact, reviewRisk, withoutPatternOverlap } from './pipeline';
 import { ALL_ENTITY_TYPES, type Entity } from './types';
 
 const all = new Set(ALL_ENTITY_TYPES);
@@ -428,7 +428,8 @@ describe('quiet mode', () => {
       { text: 'youtube', type: 'ORG' },
       { text: 'los angeles', type: 'ADDRESS' },
     ]);
-    expect(r.entities.some((e) => e.text === '10k')).toBe(false); // digits are never a name
+    // "10k" is money (pattern), never a person
+    expect(r.entities.filter((e) => e.text === '10k').map((e) => e.type)).toEqual(['FINANCIAL']);
     expect(needsReview(r)).toBe(false);
   });
 
@@ -437,5 +438,41 @@ describe('quiet mode', () => {
     expect(needsReview(await run('Visit Priya Shah tomorrow', [{ text: 'Priya Shah', type: 'PERSON' }]))).toBe(true);
     expect(needsReview(await run('I live at 203 Main Street', [{ text: '203 Main Street', type: 'ADDRESS' }]))).toBe(true);
     expect(needsReview(await run('Patient has leukemia', [{ text: 'leukemia', type: 'MEDICAL_CONDITION' }]))).toBe(true);
+  });
+});
+
+describe('consistent results for everyday text', () => {
+  const text = 'how to get 10k  in youtube, my address is los angeles, 203 street, with by budget of 1k $';
+  const runs: Array<Array<{ text: string; type: Entity['type'] }>> = [
+    [{ text: '10k', type: 'MEDICAL_CONDITION' }, { text: '203 street', type: 'ADDRESS' }, { text: 'budget', type: 'PERSON' }],
+    [{ text: '10k', type: 'CLIENT_ID' }, { text: '203 street', type: 'ADDRESS' }],
+    [{ text: '10k', type: 'CLIENT_ID' }, { text: 'los angeles', type: 'ADDRESS' }, { text: '203 street', type: 'ADDRESS' }, { text: '1k', type: 'PROJECT_CODENAME' }],
+  ];
+  it('the three different Nano outputs from your screenshots now redact the same way', async () => {
+    const outs = new Set<string>();
+    for (const ents of runs) {
+      const r = await redact(text, DEFAULT_POLICY, {
+        extractLocal: async () => ({ location: 'on_device', entities: ents.map((e) => ({ ...e, confidence: 0.9, source: 'on_device' as const })) }),
+      });
+      expect(r.redacted).toContain('[FINANCIAL_1 · 10K–100K]');
+      expect(r.redacted).toContain('[FINANCIAL_2 · 1K–10K]');
+      expect(r.redacted).not.toMatch(/MEDICAL|CLIENT_ID|PERSON|PROJECT/);
+      outs.add(r.redacted.replace(/\[ADDRESS_\d[^\]]*\], ?/g, '').replace(/los angeles, /, ''));
+    }
+    expect(outs.size).toBe(1);
+  });
+  it('plausibleLabel rejects numbers-as-names and generic words', () => {
+    const e = (text: string, type: Entity['type']) => ({ text, type, confidence: 0.9, source: 'on_device' as const });
+    expect(plausibleLabel(e('budget', 'PERSON'))).toBe(false);
+    expect(plausibleLabel(e('money', 'CLIENT_ID'))).toBe(false);
+    expect(plausibleLabel(e('E-10432', 'CLIENT_ID'))).toBe(true);
+    expect(plausibleLabel(e('Priya Shah', 'PERSON'))).toBe(true);
+  });
+});
+
+describe('shorthand amounts', () => {
+  it('catches 10k / 1.5M / 5 lakh but not 4K TV or 5k run', () => {
+    const t = 'Budget 10k, raise 1.5M, fee 5 lakh; a 4K TV, a 5k run, 2M views.';
+    expect(detectPatterns(t, all).filter((e) => e.type === 'FINANCIAL').map((e) => e.text)).toEqual(['10k', '1.5M', '5 lakh']);
   });
 });

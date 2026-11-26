@@ -68,6 +68,14 @@ const DETECTORS: PatternDetector[] = [
     type: 'FINANCIAL',
     regex: /(?:[$€£₹]\s?|\b(?:USD|EUR|GBP|INR|Rs\.?)\s?)\d+(?:,\d+)*(?:\.\d+)?(?:\s?(?:million|billion|lakhs?|crores?|[KMB]|k|bn|mn)\b)?/g,
   },
+  // Shorthand amounts without a currency symbol: "10k", "1.5M", "5 lakh", "2 crore".
+  // Deterministic, so Nano's guesses ("10k" as a person or condition) can't override them.
+  {
+    type: 'FINANCIAL',
+    // Not money: "4K TV", "5k run", "10k steps", "2M views".
+    regex:
+      /\b\d+(?:\.\d+)?\s?(?:k|K|M|mn|bn|million|billion|lakhs?|crores?)\b(?!\s?(?:tv|run|race|steps|resolution|monitor|display|video|views|subscribers|followers|words|users|downloads|km|miles)\b)/gi,
+  },
   {
     type: 'DATE_OF_BIRTH',
     regex: /\b(?:DOB|D\.O\.B\.|date of birth|born(?: on)?)[:\s]*\d{1,4}[/.-]\d{1,2}[/.-]\d{1,4}\b/gi,
