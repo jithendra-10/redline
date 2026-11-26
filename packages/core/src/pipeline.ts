@@ -18,6 +18,44 @@ function build(text: string, entities: Entity[], keepMeaning: boolean) {
   return { redacted, mapping: map.mapping, aliases: map.aliases };
 }
 
+/** Every [start, end) occurrence of `needle` in `text`, case-insensitive. */
+function ranges(text: string, needle: string): Array<[number, number]> {
+  const out: Array<[number, number]> = [];
+  const hay = text.toLowerCase();
+  const n = needle.toLowerCase();
+  if (!n) return out;
+  for (let i = hay.indexOf(n); i !== -1; i = hay.indexOf(n, i + 1)) out.push([i, i + n.length]);
+  return out;
+}
+
+/**
+ * Pattern detectors are deterministic and correctly typed (money, phone, email, IDs),
+ * so they win wherever they matched. A Nano span overlapping a pattern match is dropped:
+ * e.g. Nano's "2,400/month" as CLIENT_ID would otherwise swallow "$2,400" and leave "$[CLIENT_ID_1]".
+ */
+export function withoutPatternOverlap(semantic: Entity[], patterns: Entity[], text: string): Entity[] {
+  // Name-after-honorific is a partial, weak pattern: it never overrides Nano.
+  const strong = patterns.filter((p) => p.type !== 'PERSON');
+  return semantic.filter((e) => {
+    if (strong.some((p) => p.text.toLowerCase() === e.text.toLowerCase())) return false;
+    const eRanges = ranges(text, e.text);
+    const overlapping = strong.filter((p) =>
+      ranges(text, p.text).some(([a, b]) => eRanges.some(([s, en]) => s < b && en > a)),
+    );
+    if (!overlapping.length) return true;
+    // Safety: dropping a Nano span must never expose the part the pattern didn't cover.
+    // Drop only if what's left is generic (no capitals, no digits), e.g. "/month".
+    let rest = e.text;
+    for (const p of overlapping) {
+      rest = rest.replace(new RegExp(p.text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi'), ' ');
+      // Also strip the pattern's digits-only core (Nano often omits the currency symbol).
+      const core = p.text.replace(/^[^\d]+/, '');
+      if (core) rest = rest.split(core).join(' ');
+    }
+    return /[A-Z0-9]/.test(rest);
+  });
+}
+
 const now = () => (typeof performance !== 'undefined' ? performance.now() : Date.now());
 
 /** Lower bar in strict mode, higher bar in lenient mode. */
@@ -46,7 +84,11 @@ export async function redact(text: string, policy: Policy, deps: PipelineDeps): 
       try {
         const r = await deps.extractLocal(text, enabled);
         const min = thresholdFor(policy);
-        semantic = r.entities.filter((e) => e.confidence >= min);
+        semantic = withoutPatternOverlap(
+          r.entities.filter((e) => e.confidence >= min),
+          patternEntities,
+          text,
+        );
         trace.push({
           step: 'Gemini Nano entity extraction',
           location: r.location,

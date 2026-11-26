@@ -6,7 +6,7 @@ import { buildAuditEvent } from './audit';
 import { attachPromptOptions, cleanSuggestions, runOnDevice, salvageEntityJson, type AbortablePromptOptions } from './ai';
 import type { GenerativeModel } from 'firebase/ai';
 import { DEFAULT_POLICY, policyFromValues } from './policy';
-import { redact, reviewRisk } from './pipeline';
+import { redact, reviewRisk, withoutPatternOverlap } from './pipeline';
 import { ALL_ENTITY_TYPES, type Entity } from './types';
 
 const all = new Set(ALL_ENTITY_TYPES);
@@ -353,5 +353,41 @@ describe('risk suggestions', () => {
       redacted,
     );
     expect(out.map((x) => x.text)).toEqual(['Austin', 'the only female partner']);
+  });
+});
+
+describe('pattern spans win over overlapping Nano spans', () => {
+  it('keeps "$2,400" as money when Nano mislabels "2,400/month"', async () => {
+    const text =
+      'Rewrite this for a tenant: David Kim at 412 Elm St, Apt 4B needs to vacate by November 30 because we are not renewing his $2,400/month lease. His $2,400 security deposit will be returned minus damages. Call Sarah Jenkins at 555-883-1029.';
+    const r = await redact(text, DEFAULT_POLICY, {
+      extractLocal: async () => ({
+        location: 'on_device',
+        entities: [
+          { text: 'David Kim', type: 'PERSON', confidence: 0.9, source: 'on_device' },
+          { text: '412 Elm St, Apt 4B', type: 'ADDRESS', confidence: 0.9, source: 'on_device' },
+          { text: '2,400/month', type: 'CLIENT_ID', confidence: 0.9, source: 'on_device' },
+          { text: 'Sarah Jenkins', type: 'PERSON', confidence: 0.9, source: 'on_device' },
+        ],
+      }),
+    });
+    expect(r.redacted).not.toContain('CLIENT_ID');
+    expect(r.redacted).toContain('his [FINANCIAL_1 · $1K–10K]/month lease');
+    expect(r.redacted).toContain('His [FINANCIAL_1 · $1K–10K] security deposit');
+    expect(r.redacted).toContain('Call [PERSON_2] at [PHONE_1');
+    for (const v of ['David', 'Kim', 'Elm', '2,400', 'Sarah', '883']) expect(r.redacted).not.toContain(v);
+  });
+});
+
+describe('overlap safety', () => {
+  it('never drops a Nano span whose uncovered part is identifying', () => {
+    const text = 'Account 4417-2290-1183 at Lumen Bank was closed.';
+    const patterns = detectPatterns(text, all);
+    const kept = withoutPatternOverlap(
+      [{ text: 'Account 4417-2290-1183 at Lumen Bank', type: 'ORG', confidence: 0.9, source: 'on_device' }],
+      patterns,
+      text,
+    );
+    expect(kept).toHaveLength(1);
   });
 });
