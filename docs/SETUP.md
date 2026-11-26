@@ -55,3 +55,33 @@ npm test                 # core unit tests
 After your first redacted paste, a **Redline · Show real names** pill appears top-right. It swaps placeholders in the AI's replies back to real values, in that tab only.
 
 **No account handy?** Open `http://localhost:5173/mock-chat.html` (with `npm run dev:web` running). It is a ChatGPT-like page whose "AI" echoes your message, and the extension works on it too.
+
+## 7. Audit log, admin console and Hosting (Day 4)
+
+All of these are free on the Spark plan; no billing is needed.
+
+1. **Firestore:** Console → **Build → Firestore Database → Create database**. Choose a location near you (e.g. `asia-south1`, Mumbai) and start in **production mode**. Our rules replace the defaults on deploy.
+2. **Authentication:** Console → **Build → Authentication → Get started → Sign-in method**. Enable:
+   - **Anonymous**: the extension signs in anonymously to write audit events.
+   - **Google**: admins sign in to the console. Pick your support email when asked.
+3. **Deploy rules + site** (in a terminal, from the `Redline` folder):
+   ```powershell
+   npx firebase login
+   ```
+   ```powershell
+   npm run deploy
+   ```
+   This builds the web app and deploys `firestore.rules` and Firebase Hosting. The Playground is then at `https://redline-hybrid.web.app`, the admin console at `/admin`, and the eval at `/eval`.
+4. **Make yourself admin:** open `https://redline-hybrid.web.app/admin` (or `http://localhost:5173/admin.html`) and sign in with Google. The page shows your user ID. In the Console, go to **Firestore → Start collection** `admins`, set the **Document ID** to that user ID, add a field `role` = `admin`, and save. Then reload the admin page.
+
+**Testing locally without touching the real project:**
+```powershell
+npm run emulators
+```
+```powershell
+npm run dev:web:emu
+```
+Then open `http://localhost:5174/admin.html`. To test the security rules:
+```powershell
+npm run test:rules
+```
