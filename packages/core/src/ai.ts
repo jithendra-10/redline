@@ -55,14 +55,57 @@ const RISK_SCHEMA = {
   required: ['risk', 'reasons', 'suggestedRedactions'],
 };
 
+/**
+ * The SDK keeps our promptOptions object by reference and passes it to Chrome's
+ * session.prompt(). Chrome accepts an AbortSignal there, so we attach a fresh
+ * signal per call: a timed-out Nano call is truly cancelled and frees the model,
+ * instead of running on and blocking every call queued behind it.
+ */
+export interface AbortablePromptOptions {
+  responseConstraint?: object;
+  signal?: AbortSignal;
+}
+const PROMPT_OPTIONS = new WeakMap<GenerativeModel, AbortablePromptOptions>();
+
+/** On-device calls run one at a time (warm-up included) so they never fight for the GPU. */
+const QUEUES = new WeakMap<GenerativeModel, Promise<unknown>>();
+
+/** Exported for tests. */
+export function attachPromptOptions(model: GenerativeModel, opts: AbortablePromptOptions): void {
+  PROMPT_OPTIONS.set(model, opts);
+}
+
+export async function runOnDevice<T>(
+  model: GenerativeModel,
+  ms: number,
+  what: string,
+  call: () => Promise<T>,
+): Promise<T> {
+  const previous = QUEUES.get(model) ?? Promise.resolve();
+  const run = previous.catch(() => {}).then(async () => {
+    const ctrl = new AbortController();
+    const opts = PROMPT_OPTIONS.get(model);
+    if (opts) opts.signal = ctrl.signal;
+    try {
+      return await withTimeout(call(), ms, what, () => ctrl.abort());
+    } finally {
+      if (opts && opts.signal === ctrl.signal) delete opts.signal;
+    }
+  });
+  QUEUES.set(model, run);
+  return run;
+}
+
 export function createModels(ai: AI, policy: Policy) {
+  const extractorPromptOptions: AbortablePromptOptions = { responseConstraint: ENTITY_SCHEMA };
   const extractor = getGenerativeModel(ai, {
     mode: InferenceMode.ONLY_ON_DEVICE,
     onDeviceParams: {
       createOptions: { ...LANGS, initialPrompts: [{ role: 'system', content: [{ type: 'text', value: EXTRACT_SYSTEM }] }] },
-      promptOptions: { responseConstraint: ENTITY_SCHEMA },
+      promptOptions: extractorPromptOptions,
     },
   });
+  PROMPT_OPTIONS.set(extractor, extractorPromptOptions);
 
   const riskMode =
     policy.reidCheckMode === 'on_device' ? InferenceMode.ONLY_ON_DEVICE : InferenceMode.PREFER_IN_CLOUD;
@@ -118,7 +161,7 @@ export async function getDeviceStatus(): Promise<DeviceStatus> {
  */
 export async function warmUpDevice(extractor: GenerativeModel): Promise<number> {
   const t0 = performance.now();
-  await withTimeout(extractor.generateContent('Hello from Redline.'), 60_000, 'Nano warm-up');
+  await runOnDevice(extractor, 60_000, 'Nano warm-up', () => extractor.generateContent('Hello from Redline.'));
   return Math.round(performance.now() - t0);
 }
 
@@ -131,9 +174,12 @@ const locationOf = (src: InferenceSource | undefined, fallback: StepLocation): S
   src === InferenceSource.ON_DEVICE ? 'on_device' : src === InferenceSource.IN_CLOUD ? 'in_cloud' : fallback;
 
 /** A stuck Prompt API session (or network) must never freeze the UI. */
-function withTimeout<T>(p: Promise<T>, ms: number, what: string): Promise<T> {
+function withTimeout<T>(p: Promise<T>, ms: number, what: string, onTimeout?: () => void): Promise<T> {
   return new Promise<T>((resolve, reject) => {
-    const id = setTimeout(() => reject(new Error(`${what} timed out after ${ms / 1000}s`)), ms);
+    const id = setTimeout(() => {
+      onTimeout?.();
+      reject(new Error(`${what} timed out after ${ms / 1000}s`));
+    }, ms);
     p.then(
       (v) => { clearTimeout(id); resolve(v); },
       (e) => { clearTimeout(id); reject(e); },
@@ -176,7 +222,7 @@ export async function extractEntitiesOnDevice(
   text: string,
   enabled: Set<EntityType>,
 ): Promise<{ entities: Entity[]; location: StepLocation }> {
-  const res = await withTimeout(extractor.generateContent(text), 15_000, 'On-device extraction');
+  const res = await runOnDevice(extractor, 20_000, 'On-device extraction', () => extractor.generateContent(text));
   const location = locationOf(res.response.inferenceSource, 'on_device');
   if (location !== 'on_device') {
     throw new Error('Redline privacy invariant: raw-text extraction did not run on-device.');

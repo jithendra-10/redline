@@ -2,7 +2,8 @@ import { describe, expect, it, vi } from 'vitest';
 import { detectPatterns, luhnValid } from './detectors';
 import { assertNoLeak, rehydrate } from './placeholders';
 import { birthDecade, moneyRange, safeHint } from './meaning';
-import { salvageEntityJson } from './ai';
+import { attachPromptOptions, runOnDevice, salvageEntityJson, type AbortablePromptOptions } from './ai';
+import type { GenerativeModel } from 'firebase/ai';
 import { DEFAULT_POLICY, policyFromValues } from './policy';
 import { redact, reviewRisk } from './pipeline';
 import { ALL_ENTITY_TYPES, type Entity } from './types';
@@ -268,5 +269,31 @@ describe('eval-driven robustness', () => {
       extractLocal: async () => ({ entities: [{ text: 'Priya Shah', type: 'PERSON', confidence: 0.9, source: 'on_device' }], location: 'on_device' }),
     });
     expect(r.redacted).toBe('Our client [PERSON_1] declined. Ms. [PERSON_1] called.');
+  });
+});
+
+describe('on-device call control', () => {
+  it('aborts a timed-out call and runs calls one at a time', async () => {
+    const opts: AbortablePromptOptions = {};
+    const model = {} as GenerativeModel;
+    attachPromptOptions(model, opts);
+    const order: string[] = [];
+    let aborted = false;
+
+    const hung = runOnDevice(model, 50, 'Hung call', () => {
+      const signal = opts.signal!;
+      order.push('hung:start');
+      return new Promise<string>((_, reject) => signal.addEventListener('abort', () => { aborted = true; reject(new Error('aborted')); }));
+    });
+    const next = runOnDevice(model, 1000, 'Next call', async () => {
+      order.push('next:start');
+      return 'ok';
+    });
+
+    await expect(hung).rejects.toThrow(/timed out/);
+    await expect(next).resolves.toBe('ok');
+    expect(aborted).toBe(true);
+    expect(order).toEqual(['hung:start', 'next:start']);
+    expect(opts.signal).toBeUndefined();
   });
 });

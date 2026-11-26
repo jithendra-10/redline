@@ -13,9 +13,11 @@ import { useRedline } from './useRedline';
 
 const pct = (c: number, t: number) => (t ? `${Math.round((100 * c) / t)}%` : '–');
 
+type Scored = SampleScore & { hidden?: boolean };
+
 interface Run {
   label: string;
-  scores: SampleScore[];
+  scores: Scored[];
   summary: EvalSummary;
 }
 
@@ -37,17 +39,24 @@ export function EvalPage({ config }: { config: RedlineConfig | null }) {
   };
 
   const runNano = async () => {
+    // Chrome throttles GPU work in background tabs; record whether the tab was hidden
+    // during each sample so slow/failed calls can be attributed correctly.
+    let wasHidden = document.hidden;
+    const onVis = () => { if (document.hidden) wasHidden = true; };
+    document.addEventListener('visibilitychange', onVis);
     for (let rep = 1; rep <= repeats; rep++) {
-      const scores: SampleScore[] = [];
+      const scores: Scored[] = [];
       for (const [i, s] of SAMPLES.entries()) {
         setProgress(`Run ${rep}/${repeats} · sample ${i + 1}/${SAMPLES.length} · ${s.id}`);
+        wasHidden = document.hidden;
         const t0 = performance.now();
         const r = await rl.runRedact(s.text);
-        scores.push(scoreSample(s, r, Math.round(performance.now() - t0)));
+        scores.push({ ...scoreSample(s, r, Math.round(performance.now() - t0)), hidden: wasHidden });
       }
       const label = `Patterns + Gemini Nano${repeats > 1 ? ` · run ${rep}` : ''}`;
       setRuns((prev) => [...prev, { label, scores, summary: summarize(scores, SAMPLES) }]);
     }
+    document.removeEventListener('visibilitychange', onVis);
     setProgress(null);
   };
 
@@ -84,6 +93,9 @@ export function EvalPage({ config }: { config: RedlineConfig | null }) {
           </div>
           {progress && <span className="rl-badge rl-badge--on_device rl-pulse">{progress}</span>}
         </div>
+        {progress && (
+          <div className="rl-banner">Keep this tab visible while the eval runs. Chrome slows on-device AI in background tabs.</div>
+        )}
       </section>
 
       {runs.length > 0 && (
@@ -91,7 +103,7 @@ export function EvalPage({ config }: { config: RedlineConfig | null }) {
           <h2>Summary</h2>
           <table className="rl-table">
             <thead>
-              <tr><th>Run</th><th>Recall</th><th>Leaked samples</th><th>Legal</th><th>Medical</th><th>HR</th><th>Median</th><th>p90</th><th>Nano retried</th><th>Nano failed</th></tr>
+              <tr><th>Run</th><th>Recall</th><th>Leaked samples</th><th>Legal</th><th>Medical</th><th>HR</th><th>Median</th><th>p90</th><th>Nano retried</th><th>Nano failed</th><th>Tab hidden</th></tr>
             </thead>
             <tbody>
               {runs.map((r, i) => (
@@ -106,6 +118,7 @@ export function EvalPage({ config }: { config: RedlineConfig | null }) {
                   <td>{(r.summary.p90Ms / 1000).toFixed(1)} s</td>
                   <td>{r.summary.nanoRetried}</td>
                   <td>{r.summary.nanoFailed}</td>
+                  <td>{r.scores.filter((x) => x.hidden).length}</td>
                 </tr>
               ))}
             </tbody>
@@ -133,7 +146,7 @@ export function EvalPage({ config }: { config: RedlineConfig | null }) {
         <section className="rl-card">
           <h2>Misses · {last.label}</h2>
           <table className="rl-table">
-            <thead><tr><th>Sample</th><th>Caught</th><th>Missed spans</th><th>Time</th><th>Nano</th></tr></thead>
+            <thead><tr><th>Sample</th><th>Caught</th><th>Missed spans</th><th>Time</th><th>Nano</th><th>Tab hidden</th></tr></thead>
             <tbody>
               {last.scores.map((s) => (
                 <tr key={s.id} className={s.missed.length ? 'rl-miss' : ''}>
@@ -142,6 +155,7 @@ export function EvalPage({ config }: { config: RedlineConfig | null }) {
                   <td>{s.missed.map((m) => `${m.type}: “${m.text}”`).join(' · ') || '—'}</td>
                   <td>{(s.ms / 1000).toFixed(1)} s</td>
                   <td>{s.nano}</td>
+                  <td>{s.hidden ? 'yes' : ''}</td>
                 </tr>
               ))}
             </tbody>
