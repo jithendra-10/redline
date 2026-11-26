@@ -6,7 +6,6 @@ import {
   type GenerativeModel,
 } from 'firebase/ai';
 import type { Policy } from './policy';
-import { isPlaceholder } from './placeholders';
 import { ALL_ENTITY_TYPES, SEMANTIC_TYPES, type Entity, type EntityType, type RiskReport, type StepLocation } from './types';
 
 /**
@@ -251,6 +250,27 @@ export async function extractEntitiesOnDevice(
   return { entities, location };
 }
 
+/**
+ * Models sometimes "suggest" redacting the placeholders themselves ("PERSON_1",
+ * "Call [ORG_1] at [PHONE_1]"). Keep only short spans of real, still-visible text
+ * that appear verbatim and don't overlap any placeholder.
+ */
+export function cleanSuggestions(
+  suggestions: RiskReport['suggestedRedactions'],
+  redacted: string,
+): RiskReport['suggestedRedactions'] {
+  const seen = new Set<string>();
+  return suggestions.filter((sg) => {
+    const t = sg.text?.trim();
+    if (!t || t.length < 2 || t.length > 60) return false;
+    if (/[[\]]|\b[A-Z_]+_\d+\b/.test(t)) return false; // contains a placeholder or its key (PERSON_1)
+    if (!/[A-Za-z0-9]/.test(t) || !redacted.includes(t)) return false;
+    if (seen.has(t.toLowerCase())) return false;
+    seen.add(t.toLowerCase());
+    return true;
+  }).map((sg) => ({ ...sg, text: sg.text.trim() }));
+}
+
 /** Re-identification risk check. Caller must pass REDACTED text only (enforced in pipeline). */
 export async function checkReidRisk(riskChecker: GenerativeModel, redacted: string): Promise<RiskReport> {
   const t0 = performance.now();
@@ -259,9 +279,7 @@ export async function checkReidRisk(riskChecker: GenerativeModel, redacted: stri
   return {
     risk: parsed.risk ?? 'medium',
     reasons: parsed.reasons ?? [],
-    suggestedRedactions: (parsed.suggestedRedactions ?? []).filter(
-      (s) => s.text && !isPlaceholder(s.text) && redacted.includes(s.text),
-    ),
+    suggestedRedactions: cleanSuggestions(parsed.suggestedRedactions ?? [], redacted),
     location: locationOf(res.response.inferenceSource, 'in_cloud'),
     ms: Math.round(performance.now() - t0),
   };

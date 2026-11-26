@@ -3,7 +3,7 @@ import { detectPatterns, luhnValid } from './detectors';
 import { assertNoLeak, mergeIntoSession, rehydrate } from './placeholders';
 import { birthDecade, moneyRange, safeHint } from './meaning';
 import { buildAuditEvent } from './audit';
-import { attachPromptOptions, runOnDevice, salvageEntityJson, type AbortablePromptOptions } from './ai';
+import { attachPromptOptions, cleanSuggestions, runOnDevice, salvageEntityJson, type AbortablePromptOptions } from './ai';
 import type { GenerativeModel } from 'firebase/ai';
 import { DEFAULT_POLICY, policyFromValues } from './policy';
 import { redact, reviewRisk } from './pipeline';
@@ -334,5 +334,24 @@ describe('audit event', () => {
     expect(ev.counts).toEqual({ PERSON: 1, ORG: 1, FINANCIAL: 1, EMAIL: 1 });
     const json = JSON.stringify(ev);
     for (const secret of ['Priya', 'Shah', 'Acme', '4.2', 'priya@']) expect(json).not.toContain(secret);
+  });
+});
+
+describe('risk suggestions', () => {
+  it('drops placeholders and fragments containing them; keeps real visible text', () => {
+    const redacted = 'Rewrite for [PERSON_1] at [ADDRESS_1]: the only female partner in our Austin office. Call [ORG_1] at [PHONE_1 · phone number].';
+    const out = cleanSuggestions(
+      [
+        { text: 'PERSON_1', type: 'PERSON' },
+        { text: 'Call [ORG_1] at [PHONE_1 · phone number]', type: 'ORG' },
+        { text: '$[CLIENT_ID_1]', type: 'CLIENT_ID' },
+        { text: 'Austin', type: 'ADDRESS' },
+        { text: ' Austin ', type: 'ADDRESS' },
+        { text: 'Boston', type: 'ADDRESS' },
+        { text: 'the only female partner', type: 'PERSON' },
+      ],
+      redacted,
+    );
+    expect(out.map((x) => x.text)).toEqual(['Austin', 'the only female partner']);
   });
 });
