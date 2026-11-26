@@ -80,14 +80,14 @@ vitest
 
 ### Image gallery (3:2 ratio, PNG or JPG, ≤ 5 MB)
 Upload in this order (files in `docs/media/`):
-1. `01-gemini-card.png`: the Redline card on Gemini
-2. `02-gemini-reveal.png`: Gemini's reply with real names restored locally
-3. `03-chatgpt-card.png`: the same on ChatGPT
-4. `04-typing-chip.png`: live check while typing
-5. `05-risk-check.png`: re-identification check (cloud → Nano fallback)
-6. `06-side-panel.png`: the side panel
-7. `07-admin.png`: admin console (policy + content-free audit log)
-8. `08-eval.png`: accuracy eval
+1. `01-gemini-card.jpg`: the Redline card on Gemini, redacted on-device
+2. `02b-gemini-reply-real-names.jpg`: Gemini's reply with real names restored locally
+3. `03c-chatgpt-card-medical.jpg`: a medical referral redacted on ChatGPT
+4. `04-typing-chip.jpg`: live check while typing
+5. `05-risk-check.jpg`: re-identification check (redacted text only)
+6. `08-side-panel.jpg`: the side panel
+7. `09-admin-console.jpg`: admin console (Remote Config policy + counts-only audit log)
+8. `07-playground.jpg`: the web playground with a live trace
 9. `architecture.gif`: how it works (animated workflow; the README uses the animated SVG)
 
 ### Demo video URL
