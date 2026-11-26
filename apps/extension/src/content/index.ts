@@ -37,7 +37,14 @@ function siteAllowed(): boolean {
   return policy.siteAllowlist.some((s) => host === s || host.endsWith(`.${s}`));
 }
 
+/** After the extension is updated or reloaded, scripts already in open tabs lose chrome.runtime. */
+const extensionAlive = () => typeof chrome !== 'undefined' && !!chrome.runtime?.id;
+
+const RELOAD_MESSAGE =
+  'Redline was updated. Reload this page (F5) to keep protecting your pastes. Your text was not inserted.';
+
 async function ensureWorker(): Promise<void> {
+  if (!extensionAlive()) throw new Error(RELOAD_MESSAGE);
   const res = await chrome.runtime.sendMessage({ type: 'ensure-worker' });
   if (!res?.ok) throw new Error(res?.error ?? 'Redline worker unavailable');
 }
@@ -70,6 +77,7 @@ function startRedaction(text: string, target: Editable) {
 
   const audit = (action: AuditAction) => {
     if (!latest) return;
+    if (!extensionAlive()) return;
     const event = buildAuditEvent(latest, action, location.hostname);
     chrome.runtime.sendMessage({ type: 'audit', event }).catch(() => {});
   };
@@ -105,6 +113,10 @@ function startRedaction(text: string, target: Editable) {
         : {
             onCheckRisk: () => {
               if (!latest || !overlay) return;
+              if (!extensionAlive()) {
+                overlay.setRisk({ state: 'error', message: RELOAD_MESSAGE });
+                return;
+              }
               overlay.setRisk({ state: 'checking' });
               const rid = Math.random().toString(36).slice(2);
               const port = chrome.runtime.connect({ name: PORT_NAME });
