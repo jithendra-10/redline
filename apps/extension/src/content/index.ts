@@ -18,7 +18,7 @@ import { buildAuditEvent, type AuditAction } from '@redline/core/src/audit';
 import { addRedactions } from '@redline/core/src/pipeline';
 import { needsReview } from '@redline/core/src/quiet';
 import type { RedactionResult } from '@redline/core/src/types';
-import { PORT_NAME, type PolicySnapshot, type WorkerEvent } from '../protocol';
+import { PORT_NAME, type PolicySnapshot, type TabRequest, type TabState, type WorkerEvent } from '../protocol';
 import {
   editableFrom,
   findSendButton,
@@ -309,3 +309,25 @@ window.addEventListener('focusin', (e) => {
 window.addEventListener('paste', onPaste, true);
 window.addEventListener('keydown', onKeydown, true);
 window.addEventListener('click', onClick, true);
+
+// ---------------- Side panel queries ----------------
+safely(() =>
+  chrome.runtime.onMessage.addListener((msg: TabRequest, _sender, sendResponse) => {
+    if (msg.type === 'toggle-reveal') {
+      if (Object.keys(session).length) {
+        reveal.show();
+        reveal.toggle();
+      }
+    } else if (msg.type !== 'tab-state') return false;
+    const paused = pausedSites.includes(host);
+    const state: TabState = {
+      host,
+      protectedSite: host === 'localhost' || host === '127.0.0.1' || policy.siteAllowlist.some((s) => host === s || host.endsWith(`.${s}`)),
+      paused,
+      revealOn: reveal.isOn,
+      session,
+    };
+    sendResponse(state);
+    return false;
+  }),
+);

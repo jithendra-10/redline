@@ -28,3 +28,24 @@ export interface PolicySnapshot {
   policy: Policy;
   device: string;
 }
+
+/** side panel -> content script (chrome.tabs.sendMessage) */
+export type TabRequest = { type: 'tab-state' } | { type: 'toggle-reveal' };
+
+export interface TabState {
+  host: string;
+  protectedSite: boolean;
+  paused: boolean;
+  revealOn: boolean;
+  /** placeholder key -> real value, this tab only (never leaves the device) */
+  session: Record<string, string>;
+}
+
+/** Local, per-device counters kept by the background (no content). */
+export interface LocalStats {
+  redacted: number;
+  clean: number;
+  original: number;
+  cancelled: number;
+  items: number;
+}

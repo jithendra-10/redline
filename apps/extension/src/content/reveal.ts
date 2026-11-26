@@ -37,6 +37,10 @@ export class Reveal {
     this.root.append(style, this.btn);
   }
 
+  get isOn() {
+    return this.on;
+  }
+
   show() {
     if (!this.host.isConnected) document.documentElement.append(this.host);
   }

@@ -1,4 +1,4 @@
-import type { BackgroundRequest } from './protocol';
+import type { BackgroundRequest, LocalStats } from './protocol';
 
 // Clicking the toolbar icon opens the Redline side panel.
 chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch(console.error);
@@ -28,6 +28,16 @@ async function ensureWorker(): Promise<void> {
 chrome.runtime.onMessage.addListener((msg: BackgroundRequest, _sender, sendResponse) => {
   if (msg.type === 'policy-update') {
     chrome.storage.local.set({ redlinePolicy: msg.snapshot }).catch(console.error);
+    return false;
+  }
+  if (msg.type === 'audit') {
+    // Local per-device counters for the side panel (counts only, like the audit log).
+    chrome.storage.local.get('redlineStats').then((v) => {
+      const s: LocalStats = { redacted: 0, clean: 0, original: 0, cancelled: 0, items: 0, ...(v.redlineStats as LocalStats | undefined) };
+      s[msg.event.action] += 1;
+      if (msg.event.action === 'redacted') s.items += msg.event.total;
+      return chrome.storage.local.set({ redlineStats: s });
+    }).catch(console.error);
     return false;
   }
   if (msg.type === 'ensure-worker') {
