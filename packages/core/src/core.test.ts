@@ -224,3 +224,12 @@ describe('client ID patterns', () => {
     expect(ids).toEqual(['LGL-2291', 'ARB/22/417', '448812', '4417-2290-1183']);
   });
 });
+
+describe('re-hydration is robust to chatbot rewording', () => {
+  it('restores values when the AI drops or rewords the hint', () => {
+    const mapping = { '[PERSON_1 · client]': 'Priya Shah', '[FINANCIAL_1 · $1M–10M]': '$4.2M' };
+    expect(rehydrate('Dear [PERSON_1], the [FINANCIAL_1 - $1M-10M] offer… regards to [ person_1 · client ].', mapping))
+      .toBe('Dear Priya Shah, the $4.2M offer… regards to Priya Shah.');
+    expect(rehydrate('Unknown [PERSON_9] and [not a placeholder]', mapping)).toBe('Unknown [PERSON_9] and [not a placeholder]');
+  });
+});

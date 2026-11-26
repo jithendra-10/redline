@@ -115,7 +115,14 @@ export function applyRedactions(text: string, entities: Entity[], map: Placehold
 
 /** Swap placeholders back to real values. Runs locally only. */
 export function rehydrate(text: string, mapping: Record<string, string>): string {
-  return text.replace(PLACEHOLDER_RE, (ph) => mapping[ph] ?? ph);
+  // Match on the stable key (PERSON_1), not the full placeholder: chatbots often drop
+  // or reword the hint ("[PERSON_1]", "[PERSON_1 - client]", "[ person_1 ]").
+  const byKey = new Map<string, string>();
+  for (const [ph, value] of Object.entries(mapping)) {
+    const key = ph.match(/^\[([A-Z_]+_\d+)/)?.[1];
+    if (key) byKey.set(key, value);
+  }
+  return text.replace(/\[\s*([A-Za-z_]+_\d+)\b[^\]\n]{0,60}\]/g, (whole, key: string) => byKey.get(key.toUpperCase()) ?? whole);
 }
 
 /**
