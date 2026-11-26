@@ -10,3 +10,4 @@ dist/
 !.env.emulators
 .claude/
 release/
+brag-output/
