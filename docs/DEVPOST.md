@@ -5,7 +5,7 @@
 ### About the project (paste everything inside the box below)
 
 ````markdown
-![How Redline works](https://raw.githubusercontent.com/jithendra-10/redline/main/docs/media/architecture.png)
+![How Redline works](https://raw.githubusercontent.com/jithendra-10/redline/main/docs/media/architecture.gif)
 
 ## Inspiration
 Every day, lawyers paste client emails into ChatGPT, clinicians paste referral letters, and HR teams paste termination notes. One paste can break attorney–client privilege, health-privacy rules or an NDA, and banning AI tools just pushes people onto personal devices. Existing fixes contain a contradiction: cloud data-loss-prevention services have to **see** the secret in order to find it. We wanted protection that runs *before* anything leaves the laptop. That's exactly what on-device AI makes possible.
@@ -88,7 +88,7 @@ Upload in this order (files in `docs/media/`):
 6. `06-side-panel.png`: the side panel
 7. `07-admin.png`: admin console (policy + content-free audit log)
 8. `08-eval.png`: accuracy eval
-9. `architecture.png`: how it works
+9. `architecture.gif`: how it works (animated workflow; the README uses the animated SVG)
 
 ### Demo video URL
 `https://www.youtube.com/watch?v=…` (public or unlisted)

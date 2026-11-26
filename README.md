@@ -34,7 +34,7 @@ Lawyers, clinicians, HR teams and consultants paste client emails, case notes an
 
 ## How it works
 
-<p align="center"><img src="assets/architecture.svg" width="100%" alt="How Redline works: raw text goes from the chat box to an on-device worker where pattern rules and Gemini Nano (ONLY_ON_DEVICE) create meaning-preserving placeholders; only redacted text goes to the AI chatbot and, for a re-identification check, to Gemini in the cloud (PREFER_IN_CLOUD, falls back to Nano); the reply is re-hydrated locally; Remote Config sends policy in, Firestore receives counts only."></p>
+<p align="center"><img src="assets/architecture.svg" width="100%" alt="Animated workflow, how Redline works: raw text goes from the chat box to an on-device worker where pattern rules and Gemini Nano (ONLY_ON_DEVICE) create meaning-preserving placeholders; only redacted text goes to the AI chatbot and, for a re-identification check, to Gemini in the cloud (PREFER_IN_CLOUD, falls back to Nano); the reply is re-hydrated locally; Remote Config sends policy in, Firestore receives counts only."></p>
 
 1. **Catch:** Redline intercepts large pastes, and typed messages on Enter or Send, on supported AI chat sites. A small chip on the chat box shows its status while you type.
 2. **Redact on-device:** fixed patterns catch anything with a precise format (emails, phones, IDs, cards, IBANs, amounts). Gemini Nano finds what patterns can't: people, organisations, addresses, conditions, medications, codenames. Deterministic sanity rules then reject implausible labels from Nano.
