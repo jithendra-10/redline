@@ -109,6 +109,9 @@ export class Overlay {
     if (anchor && anchor.top > 240) {
       this.card.style.bottom = `${Math.max(12, window.innerHeight - anchor.top + 10)}px`;
       this.card.style.right = `${Math.max(12, window.innerWidth - anchor.right)}px`;
+      // Never taller than the space above the chat box (it scrolls instead of being cut off).
+      this.card.style.maxHeight = `${Math.max(200, anchor.top - 22)}px`;
+      this.card.style.overflowY = 'auto';
     }
     this.root.append(style, this.card);
     document.documentElement.append(this.host);

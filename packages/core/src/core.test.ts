@@ -505,3 +505,23 @@ describe('ambiguous short words and +country phones', () => {
     expect(plausibleLabel(e('my', 'PERSON'))).toBe(false);
   });
 });
+
+describe('everyday questions found live on Gemini', () => {
+  const e = (text: string, type: Entity['type']) => ({ text, type, confidence: 0.9, source: 'on_device' as const });
+  it('rejects "family" as a person and "10k subscribers" as a codename', () => {
+    expect(plausibleLabel(e('family', 'PERSON'))).toBe(false);
+    expect(plausibleLabel(e('10k subscribers', 'PROJECT_CODENAME'))).toBe(false);
+    expect(plausibleLabel(e('cooking channel', 'PROJECT_CODENAME'))).toBe(false);
+    expect(plausibleLabel(e('Project Falcon', 'PROJECT_CODENAME'))).toBe(true);
+    expect(plausibleLabel(e('Atlas migration', 'PROJECT_CODENAME'))).toBe(true);
+  });
+  it('both questions pass quietly', async () => {
+    for (const [text, ents] of [
+      ['What are some easy weeknight dinner ideas for a family of four on a budget?', [e('family', 'PERSON')]],
+      ['How can I grow a YouTube cooking channel to 10k subscribers with a budget of $500?', [e('YouTube', 'ORG'), e('10k subscribers', 'PROJECT_CODENAME')]],
+    ] as const) {
+      const r = await redact(text, DEFAULT_POLICY, { extractLocal: async () => ({ location: 'on_device', entities: [...ents] }) });
+      expect(needsReview(r), text).toBe(false);
+    }
+  });
+});

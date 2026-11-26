@@ -36,6 +36,13 @@ const GENERIC_WORDS = new Set([
   'budget', 'street', 'money', 'client', 'clients', 'customer', 'site', 'address', 'salary', 'price', 'cost',
   'amount', 'company', 'user', 'team', 'manager', 'project', 'case', 'legal', 'office', 'patient', 'doctor',
   'employee', 'tenant', 'landlord', 'lease', 'contract', 'invoice', 'account', 'bank', 'hospital', 'school',
+  // People-ish common nouns Nano tags as PERSON in everyday questions ("a family of four").
+  'family', 'families', 'friend', 'friends', 'mom', 'mum', 'dad', 'mother', 'father', 'parent', 'parents', 'kid',
+  'kids', 'child', 'children', 'baby', 'son', 'daughter', 'brother', 'sister', 'wife', 'husband', 'partner',
+  'boyfriend', 'girlfriend', 'boss', 'colleague', 'coworker', 'coworkers', 'neighbor', 'neighbour', 'people',
+  'person', 'someone', 'everyone', 'anyone', 'audience', 'viewers', 'subscribers', 'followers', 'customers',
+  'users', 'students', 'teacher', 'teachers', 'guest', 'guests', 'group', 'channel', 'business', 'startup',
+  'store', 'shop', 'restaurant', 'website', 'app', 'brand', 'organization', 'organisation', 'agency', 'firm',
 ]);
 
 /**
@@ -62,6 +69,8 @@ export function plausibleLabel(e: Entity): boolean {
   if ((e.type === 'PERSON' || e.type === 'ORG' || e.type === 'PROJECT_CODENAME') && GENERIC_WORDS.has(t.toLowerCase())) {
     return false;
   }
+  // Codenames are proper nouns ("Project Falcon", "Bluebird"): a capital letter, never a leading number.
+  if (e.type === 'PROJECT_CODENAME' && (!/[A-Z]/.test(t) || /^\d/.test(t))) return false;
   // "10k", "1.5M", "5 lakh" are amounts whatever label Nano gave them.
   if (/^\$?\d+(?:\.\d+)?\s?(?:k|m|mn|bn|million|billion|lakhs?|crores?)\$?$/i.test(t)) return false;
   return true;
