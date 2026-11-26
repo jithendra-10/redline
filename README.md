@@ -10,7 +10,7 @@ Built for **#BuildHybridAI 2026** with the **Firebase AI Logic hybrid inference 
 
 - **Try it without installing anything:** https://redline-hybrid.web.app
 - **Install the extension:** [docs/JUDGES.md](docs/JUDGES.md) (about 2 minutes)
-- **Product spec:** [PRD.md](PRD.md) · **Setup from source:** [docs/SETUP.md](docs/SETUP.md)
+- **Setup from source:** [docs/SETUP.md](docs/SETUP.md)
 
 ---
 
@@ -82,7 +82,7 @@ packages/ui       shared React UI: Playground, accuracy eval, admin console
 apps/extension    Chrome MV3 extension: content script, offscreen Nano worker, side panel
 apps/web          hosted pages (Firebase Hosting)
 tests             Firestore security-rules tests (emulator)
-docs              setup guide, judges' guide, Devpost text, demo script
+docs              setup guide, judges' guide, screenshots and media
 ```
 
 ## Run it
