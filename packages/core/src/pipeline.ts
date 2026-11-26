@@ -43,11 +43,21 @@ const GENERIC_WORDS = new Set([
  *  - IDs contain digits; names, organisations and codenames are not just numbers.
  *  - A single generic word ("budget", "client") is never a name or a codename.
  */
+const FUNCTION_WORDS = new Set([
+  'no', 'not', 'yes', 'is', 'am', 'are', 'was', 'be', 'my', 'me', 'i', 'we', 'us', 'our', 'you', 'your', 'he', 'she',
+  'his', 'her', 'it', 'its', 'they', 'them', 'the', 'a', 'an', 'and', 'or', 'but', 'of', 'to', 'in', 'on', 'at', 'by',
+  'for', 'with', 'from', 'as', 'so', 'if', 'do', 'does', 'did', 'has', 'have', 'had', 'can', 'will', 'this', 'that',
+  'there', 'here', 'what', 'how', 'why', 'who', 'when', 'where', 'ok', 'okay', 'hi', 'hello', 'please', 'thanks',
+]);
+
 export function plausibleLabel(e: Entity): boolean {
   const t = e.text.trim();
   const digits = (t.match(/\d/g) ?? []).length;
   if (e.type === 'CLIENT_ID') return digits >= 2;
   if (!/[A-Za-z]/.test(t)) return false;
+  // Nano confuses tiny, ambiguous words ("my no is…" -> "no" as a condition). A real name,
+  // company, condition or drug is never a function word, and never under 3 letters.
+  if (FUNCTION_WORDS.has(t.toLowerCase()) || (t.match(/[A-Za-z]/g) ?? []).length < 3) return false;
   if (e.type === 'PERSON' && digits > 0) return false; // "10k", "$500" aren't names
   if ((e.type === 'PERSON' || e.type === 'ORG' || e.type === 'PROJECT_CODENAME') && GENERIC_WORDS.has(t.toLowerCase())) {
     return false;

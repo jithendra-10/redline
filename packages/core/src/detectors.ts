@@ -36,6 +36,16 @@ const DETECTORS: PatternDetector[] = [
   },
   { type: 'CARD_NUMBER', regex: /\b(?:\d[ -]?){12,18}\d\b/g, validate: luhnValid },
   { type: 'BANK_ACCOUNT', regex: /\b[A-Z]{2}\d{2}(?: ?[A-Z0-9]{4}){2,7}(?: ?[A-Z0-9]{1,4})?\b/g },
+  // A number with a +country code is a phone, whatever its grouping. Runs before the
+  // ID patterns, so "+123 234 2345" isn't read as a 3-3-4 NHS number.
+  {
+    type: 'PHONE',
+    regex: /\+\d{1,3}[ .-]?\(?\d{1,5}\)?(?:[ .-]?\d{2,5}){1,4}\b/g,
+    validate: (m) => {
+      const n = m.replace(/\D/g, '').length;
+      return n >= 9 && n <= 15;
+    },
+  },
   // US SSN, UK NHS number (3-3-4), Indian Aadhaar (4-4-4).
   { type: 'GOV_ID', regex: /\b\d{3}-\d{2}-\d{4}\b/g },
   { type: 'GOV_ID', regex: /\b\d{3} \d{3} \d{4}\b/g },

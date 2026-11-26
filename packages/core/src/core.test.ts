@@ -476,3 +476,32 @@ describe('shorthand amounts', () => {
     expect(detectPatterns(t, all).filter((e) => e.type === 'FINANCIAL').map((e) => e.text)).toEqual(['10k', '1.5M', '5 lakh']);
   });
 });
+
+describe('ambiguous short words and +country phones', () => {
+  it('your Gemini example: "no" stays, +123 number is a phone, nothing else changes', async () => {
+    const text = 'how to get 100k in site selling for a client in profit , my address is usa los angeles, 23 street, my no is +123 234 2345';
+    const r = await redact(text, DEFAULT_POLICY, {
+      extractLocal: async () => ({
+        location: 'on_device',
+        entities: [
+          { text: 'no', type: 'MEDICAL_CONDITION', confidence: 0.9, source: 'on_device' },
+          { text: '23 street', type: 'ADDRESS', confidence: 0.9, source: 'on_device' },
+        ],
+      }),
+    });
+    expect(r.redacted).toContain('my no is [PHONE_1');
+    expect(r.redacted).not.toContain('+[');
+    expect(r.redacted).not.toMatch(/MEDICAL|GOV_ID/);
+    expect(r.redacted).toContain('[FINANCIAL_1 · 100K–1M]');
+  });
+  it('still treats 3-3-4 without + as an NHS-style ID', () => {
+    expect(detectPatterns('NHS 943 476 5919', all).map((e) => e.type)).toEqual(['GOV_ID']);
+    expect(detectPatterns('call +44 20 7946 0958 now', all).map((e) => [e.type, e.text])).toEqual([['PHONE', '+44 20 7946 0958']]);
+  });
+  it('keeps real short-but-valid entities', () => {
+    const e = (text: string, type: Entity['type']) => ({ text, type, confidence: 0.9, source: 'on_device' as const });
+    expect(plausibleLabel(e('HIV', 'MEDICAL_CONDITION'))).toBe(true);
+    expect(plausibleLabel(e('no', 'MEDICAL_CONDITION'))).toBe(false);
+    expect(plausibleLabel(e('my', 'PERSON'))).toBe(false);
+  });
+});
