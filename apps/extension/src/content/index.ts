@@ -17,14 +17,23 @@ import { Overlay } from './overlay';
 import { Reveal } from './reveal';
 
 let policy: Policy = DEFAULT_POLICY;
-chrome.storage.local.get('redlinePolicy').then((v) => {
+/** Runs a chrome.* call, ignoring "Extension context invalidated" from stale tabs. */
+function safely<T>(fn: () => T): T | undefined {
+  try {
+    return fn();
+  } catch {
+    return undefined;
+  }
+}
+
+safely(() => chrome.storage.local.get('redlinePolicy'))?.then((v) => {
   const snap = v.redlinePolicy as PolicySnapshot | undefined;
   if (snap?.policy) policy = snap.policy;
 });
-chrome.storage.onChanged.addListener((changes) => {
+safely(() => chrome.storage.onChanged.addListener((changes) => {
   const snap = changes.redlinePolicy?.newValue as PolicySnapshot | undefined;
   if (snap?.policy) policy = snap.policy;
-});
+}));
 
 let session: Record<string, string> = {};
 let overlay: Overlay | null = null;
@@ -79,7 +88,7 @@ function startRedaction(text: string, target: Editable) {
     if (!latest) return;
     if (!extensionAlive()) return;
     const event = buildAuditEvent(latest, action, location.hostname);
-    chrome.runtime.sendMessage({ type: 'audit', event }).catch(() => {});
+    safely(() => chrome.runtime.sendMessage({ type: 'audit', event }))?.catch(() => {});
   };
 
   const finish = (insert: string | null) => {
@@ -119,10 +128,14 @@ function startRedaction(text: string, target: Editable) {
               }
               overlay.setRisk({ state: 'checking' });
               const rid = Math.random().toString(36).slice(2);
-              const port = chrome.runtime.connect({ name: PORT_NAME });
+              const port = safely(() => chrome.runtime.connect({ name: PORT_NAME }));
+              if (!port) {
+                overlay.setRisk({ state: 'error', message: RELOAD_MESSAGE });
+                return;
+              }
               const t = setTimeout(() => {
                 overlay?.setRisk({ state: 'error', message: 'timed out' });
-                port.disconnect();
+                safely(() => port.disconnect());
               }, 45_000);
               port.onMessage.addListener((ev: WorkerEvent) => {
                 if (ev.id !== rid) return;
@@ -131,7 +144,10 @@ function startRedaction(text: string, target: Editable) {
                 else if (ev.type === 'error') overlay?.setRisk({ state: 'error', message: ev.message });
                 port.disconnect();
               });
-              port.postMessage({ type: 'risk', id: rid, result: latest });
+              if (safely(() => port.postMessage({ type: 'risk', id: rid, result: latest })) === undefined && !extensionAlive()) {
+                clearTimeout(t);
+                overlay.setRisk({ state: 'error', message: RELOAD_MESSAGE });
+              }
             },
             onApplySuggestions: (suggestions) => {
               if (!latest || !overlay) return;
@@ -177,7 +193,7 @@ function startRedaction(text: string, target: Editable) {
       });
       port.postMessage({ type: 'redact', id, text });
     })
-    .catch((e) => overlay?.error((e as Error).message));
+    .catch((e) => overlay?.error(extensionAlive() ? (e as Error).message : RELOAD_MESSAGE));
 }
 
 function onPaste(e: ClipboardEvent) {
