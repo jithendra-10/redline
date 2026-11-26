@@ -34,23 +34,7 @@ Lawyers, clinicians, HR teams and consultants paste client emails, case notes an
 
 ## How it works
 
-```mermaid
-flowchart LR
-  subgraph Laptop["Your laptop (Chrome)"]
-    A[Paste or typed message<br/>on ChatGPT / Gemini / Claude] --> B[Content script<br/>holds the text]
-    B -->|extension-internal port| C[Offscreen worker]
-    C --> D[Pattern detectors<br/>emails, phones, IDs, money]
-    C --> E["Gemini Nano via Firebase AI Logic<br/>ONLY_ON_DEVICE"]
-    D & E --> F[Placeholders that keep meaning<br/>PERSON_1 · client, FINANCIAL_1 · 1M–10M]
-    F --> B
-    B -->|"redacted text only"| G[AI chatbot]
-    G -->|reply with placeholders| H[Show real names<br/>re-hydrated locally]
-  end
-  F -.->|"redacted text only, assertNoLeak"| I["Gemini (cloud) via Firebase AI Logic<br/>PREFER_IN_CLOUD → falls back to Nano"]
-  I -.-> J[Re-identification risk<br/>+ extra redaction suggestions]
-  C -. counts only .-> K[(Firestore audit log)]
-  L[Remote Config policy] -. live .-> C
-```
+<p align="center"><img src="assets/architecture.svg" width="100%" alt="How Redline works: raw text goes from the chat box to an on-device worker where pattern rules and Gemini Nano (ONLY_ON_DEVICE) create meaning-preserving placeholders; only redacted text goes to the AI chatbot and, for a re-identification check, to Gemini in the cloud (PREFER_IN_CLOUD, falls back to Nano); the reply is re-hydrated locally; Remote Config sends policy in, Firestore receives counts only."></p>
 
 1. **Catch:** Redline intercepts large pastes, and typed messages on Enter or Send, on supported AI chat sites. A small chip on the chat box shows its status while you type.
 2. **Redact on-device:** fixed patterns catch anything with a precise format (emails, phones, IDs, cards, IBANs, amounts). Gemini Nano finds what patterns can't: people, organisations, addresses, conditions, medications, codenames. Deterministic sanity rules then reject implausible labels from Nano.

@@ -1,0 +1,159 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 600" width="960" height="600" role="img" aria-labelledby="t d">
+  <title id="t">How Redline works</title>
+  <desc id="d">Raw text from an AI chat box goes from the content script to an on-device worker, where pattern rules and Gemini Nano (ONLY_ON_DEVICE) replace sensitive details with meaning-preserving placeholders. Only redacted text is sent to the AI chatbot; its reply is re-hydrated locally. Redacted text may go to Gemini in the cloud (PREFER_IN_CLOUD, falling back to Nano) for a re-identification check. Remote Config delivers policy; Firestore receives counts only.</desc>
+  <style>
+    .bg { fill: #fbf8f0; }
+    .zone { fill: #ffffff; stroke: #d9d1bd; stroke-width: 1.5; }
+    .zone2 { fill: #f3f0e6; stroke: #d9d1bd; stroke-width: 1.5; stroke-dasharray: 6 5; }
+    .node { fill: #ffffff; stroke: #cfc6b0; stroke-width: 1.5; }
+    .nano { fill: #e8f5ee; stroke: #1f7a4d; stroke-width: 1.8; }
+    .cloud { fill: #e8eefc; stroke: #1d4ed8; stroke-width: 1.8; }
+    .key { fill: #fff4f5; stroke: #c8102e; stroke-width: 1.8; }
+    .zl { font: 700 12px system-ui, -apple-system, "Segoe UI", sans-serif; letter-spacing: .12em; fill: #7a7363; }
+    .h { font: 700 15px system-ui, -apple-system, "Segoe UI", sans-serif; fill: #1d1b16; }
+    .s { font: 400 12.5px system-ui, -apple-system, "Segoe UI", sans-serif; fill: #5f594c; }
+    .m { font: 600 12px ui-monospace, "Cascadia Code", Menlo, monospace; fill: #1f7a4d; }
+    .lbl { font: 600 11.5px system-ui, -apple-system, "Segoe UI", sans-serif; }
+    .g { stroke: #1f7a4d; } .gf { fill: #1f7a4d; }
+    .b { stroke: #1d4ed8; } .bf { fill: #1d4ed8; }
+    .y { stroke: #8a8475; } .yf { fill: #8a8475; }
+    .flow { fill: none; stroke-width: 2.4; stroke-dasharray: 7 6; animation: dash 0.9s linear infinite; }
+    .slow { animation-duration: 1.6s; }
+    @keyframes dash { to { stroke-dashoffset: -13; } }
+    .pulse { animation: pulse 2.4s ease-in-out infinite; }
+    @keyframes pulse { 50% { opacity: .55; } }
+    @media (prefers-color-scheme: dark) {
+      .bg { fill: #14130f; }
+      .zone { fill: #1d1b16; stroke: #3a362d; }
+      .zone2 { fill: #191813; stroke: #3a362d; }
+      .node { fill: #24221b; stroke: #403b31; }
+      .nano { fill: #15291e; stroke: #5fd39a; }
+      .cloud { fill: #18203a; stroke: #8fb0ff; }
+      .key { fill: #2c1418; stroke: #ff5468; }
+      .zl { fill: #a39d8e; } .h { fill: #f1ede2; } .s { fill: #b5ae9e; } .m { fill: #5fd39a; }
+      .g { stroke: #5fd39a; } .gf { fill: #5fd39a; }
+      .b { stroke: #8fb0ff; } .bf { fill: #8fb0ff; }
+      .y { stroke: #a39d8e; } .yf { fill: #a39d8e; }
+    }
+    @media (prefers-reduced-motion: reduce) { .flow, .pulse { animation: none; } .packet { display: none; } }
+  </style>
+  <defs>
+    <marker id="ag" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="gf"/></marker>
+    <marker id="ab" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="bf"/></marker>
+    <marker id="ay" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="yf"/></marker>
+  </defs>
+
+  <rect class="bg" width="960" height="600" rx="16"/>
+
+  <!-- Zones -->
+  <rect class="zone" x="16" y="16" width="624" height="568" rx="14"/>
+  <text class="zl" x="36" y="42">YOUR LAPTOP · CHROME</text>
+  <rect class="zone2" x="660" y="16" width="284" height="568" rx="14"/>
+  <text class="zl" x="680" y="42">OUTSIDE THE LAPTOP</text>
+
+  <!-- Row 1 -->
+  <rect class="node" x="40" y="64" width="176" height="64" rx="10"/>
+  <text class="h" x="56" y="91">① You paste or type</text>
+  <text class="s" x="56" y="112">ChatGPT · Gemini · Claude</text>
+
+  <rect class="node" x="240" y="64" width="176" height="64" rx="10"/>
+  <text class="h" x="256" y="91">② Redline holds it</text>
+  <text class="s" x="256" y="112">content script, nothing sent</text>
+
+  <rect class="node" x="440" y="64" width="176" height="64" rx="10"/>
+  <text class="h" x="456" y="91">③ On-device worker</text>
+  <text class="s" x="456" y="112">Firebase AI Logic</text>
+
+  <!-- Row 2: engines -->
+  <rect class="node" x="240" y="176" width="176" height="64" rx="10"/>
+  <text class="h" x="256" y="203">Pattern rules</text>
+  <text class="s" x="256" y="224">emails · phones · IDs · $</text>
+
+  <rect class="nano pulse" x="440" y="176" width="176" height="64" rx="10"/>
+  <text class="h" x="456" y="203">🔒 Gemini Nano</text>
+  <text class="m" x="456" y="224">ONLY_ON_DEVICE</text>
+
+  <!-- Row 3: placeholders -->
+  <rect class="key" x="240" y="288" width="376" height="72" rx="10"/>
+  <text class="h" x="256" y="315">④ Placeholders that keep meaning</text>
+  <text class="m" x="256" y="340">[PERSON_1 · client] [FINANCIAL_1 · $1M–10M]</text>
+
+  <!-- Row 4/5 -->
+  <rect class="node" x="440" y="408" width="176" height="64" rx="10"/>
+  <text class="h" x="456" y="435">⑤ Insert / send</text>
+  <text class="s" x="456" y="456">the redacted version</text>
+
+  <rect class="node" x="440" y="500" width="176" height="64" rx="10"/>
+  <text class="h" x="456" y="527">⑥ Show real names</text>
+  <text class="s" x="456" y="548">re-hydrated in this tab only</text>
+
+  <!-- Legend -->
+  <text class="zl" x="40" y="196">LEGEND</text>
+  <line class="flow g" x1="40" y1="222" x2="92" y2="222" marker-end="url(#ag)"/>
+  <text class="s" x="100" y="226">raw text, stays here</text>
+  <line class="flow b slow" x1="40" y1="252" x2="92" y2="252" marker-end="url(#ab)"/>
+  <text class="s" x="100" y="256">redacted text only</text>
+  <line class="flow y slow" x1="40" y1="282" x2="92" y2="282" marker-end="url(#ay)"/>
+  <text class="s" x="100" y="286">policy &amp; counts</text>
+  <text class="s" x="40" y="326">Patterns are exact and</text>
+  <text class="s" x="40" y="344">always win; Nano finds</text>
+  <text class="s" x="40" y="362">names, orgs, diagnoses.</text>
+  <text class="s" x="40" y="398">The mapping</text>
+  <text class="m" x="40" y="416">PERSON_1 → Priya Shah</text>
+  <text class="s" x="40" y="434">never leaves the tab.</text>
+
+  <!-- Outside: services -->
+  <rect class="node" x="684" y="64" width="236" height="64" rx="10"/>
+  <text class="h" x="700" y="91">Remote Config</text>
+  <text class="s" x="700" y="112">org policy, live in seconds</text>
+
+  <rect class="node" x="684" y="168" width="236" height="64" rx="10"/>
+  <text class="h" x="700" y="195">Firestore audit log</text>
+  <text class="s" x="700" y="216">counts only, never text</text>
+
+  <rect class="cloud" x="684" y="282" width="236" height="96" rx="10"/>
+  <text class="h" x="700" y="309">☁ Gemini in the cloud</text>
+  <text class="m bf" x="700" y="330">PREFER_IN_CLOUD</text>
+  <text class="s" x="700" y="350">re-identification check</text>
+  <text class="s" x="700" y="368">falls back to Nano if offline</text>
+
+  <rect class="node" x="684" y="408" width="236" height="64" rx="10"/>
+  <text class="h" x="700" y="435">AI chatbot</text>
+  <text class="s" x="700" y="456">sees placeholders only</text>
+
+  <!-- Raw-text flow (green, stays on the laptop) -->
+  <path id="p1" class="flow g" d="M216 96 H238" marker-end="url(#ag)"/>
+  <path id="p2" class="flow g" d="M416 96 H438" marker-end="url(#ag)"/>
+  <path class="flow g" d="M500 128 V174" marker-end="url(#ag)"/>
+  <path class="flow g" d="M480 128 C480 150 328 150 328 174" marker-end="url(#ag)"/>
+  <path class="flow g" d="M328 240 V286" marker-end="url(#ag)"/>
+  <path class="flow g" d="M528 240 V286" marker-end="url(#ag)"/>
+  <path class="flow g" d="M528 360 V406" marker-end="url(#ag)"/>
+
+  <!-- Redacted text leaves the laptop (blue) -->
+  <path class="flow b" d="M616 440 H682" marker-end="url(#ab)"/>
+  <text class="lbl bf" x="618" y="432" style="font-size:10.5px">redacted</text>
+  <path class="flow b" d="M802 472 V532 H618" marker-end="url(#ab)"/>
+  <text class="lbl bf" x="640" y="526">reply with placeholders</text>
+  <path class="flow b slow" d="M616 314 H682" marker-end="url(#ab)"/>
+  <path class="flow b slow" d="M684 350 H618" marker-end="url(#ab)"/>
+  <text class="lbl bf" x="619" y="306" style="font-size:10.5px">risk check ⇄</text>
+
+  <!-- Policy & audit (grey) -->
+  <path class="flow y slow" d="M684 96 H618" marker-end="url(#ay)"/>
+  <path class="flow y slow" d="M616 116 C650 116 650 200 682 200" marker-end="url(#ay)"/>
+
+  <!-- Moving packets: raw text travelling through the on-device pipeline, then redacted text out and back -->
+  <g class="packet">
+    <circle r="6" class="gf">
+      <animateMotion dur="6s" repeatCount="indefinite" keyPoints="0;1" keyTimes="0;1" calcMode="linear"
+        path="M128 96 H528 V208 V324 V440"/>
+      <animate attributeName="opacity" values="1;1;0;0" keyTimes="0;0.62;0.64;1" dur="6s" repeatCount="indefinite"/>
+    </circle>
+    <circle r="6" class="bf">
+      <animateMotion dur="6s" repeatCount="indefinite" keyPoints="0;0;1" keyTimes="0;0.62;1" calcMode="linear"
+        path="M528 440 H802 V532 H528"/>
+      <animate attributeName="opacity" values="0;0;1;1" keyTimes="0;0.62;0.64;1" dur="6s" repeatCount="indefinite"/>
+    </circle>
+  </g>
+</svg>
