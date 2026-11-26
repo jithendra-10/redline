@@ -40,10 +40,11 @@ Full entity type list: `["PERSON","ORG","CLIENT_ID","EMAIL","PHONE","ADDRESS","D
 Click **Publish changes** after editing. Open Redline pages and the extension pick it up within seconds.
 
 ## 5. Chrome with Gemini Nano
-- Use Chrome **138+** on desktop (Windows/macOS/Linux) with **22 GB free disk space** and a GPU with more than 4 GB VRAM (or a 16 GB RAM / 4-core CPU).
-- Open `chrome://on-device-internals` to check the model status.
-- If the Prompt API is not available to web pages on `localhost` in your Chrome version, enable `chrome://flags/#prompt-api-for-gemini-nano` and restart. Extensions get it without flags.
-- The first run downloads Nano. Click **Download Nano** in Redline (Chrome requires a click to start the download).
+- Use desktop Chrome **138+** (Windows, macOS or Linux) with about **22 GB free disk space**, and either a GPU with more than 4 GB VRAM or 16 GB RAM with a 4-core CPU.
+- **Check it's ready:** open `chrome://on-device-internals` and look at **Use Cases**. **`prompt_api` should say "Available".** That's all Redline needs. (`prompt_api_gemma4` may say "Pending Usage". That's Chrome's newer model, which it rolls out on its own; Redline uses it automatically once it's available.)
+- **No flags are needed** when `prompt_api` is Available. Leave `chrome://flags/#prompt-api` on **Default**.
+- **Only if** Redline shows "This browser has no on-device model": set `chrome://flags/#prompt-api` to **Enabled** and relaunch Chrome. (Older Chrome versions call this flag `#prompt-api-for-gemini-nano`.)
+- **First run:** if Nano isn't downloaded yet, click **Download Nano** in the Redline Playground. Chrome requires a click to start the download.
 
 ## 6. Run
 ```powershell
