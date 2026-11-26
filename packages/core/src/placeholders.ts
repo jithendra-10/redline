@@ -119,10 +119,50 @@ export function rehydrate(text: string, mapping: Record<string, string>): string
   // or reword the hint ("[PERSON_1]", "[PERSON_1 - client]", "[ person_1 ]").
   const byKey = new Map<string, string>();
   for (const [ph, value] of Object.entries(mapping)) {
-    const key = ph.match(/^\[([A-Z_]+_\d+)/)?.[1];
+    const key = ph.match(/^\[?([A-Z_]+_\d+)/)?.[1];
     if (key) byKey.set(key, value);
   }
   return text.replace(/\[\s*([A-Za-z_]+_\d+)\b[^\]\n]{0,60}\]/g, (whole, key: string) => byKey.get(key.toUpperCase()) ?? whole);
+}
+
+/** "[PERSON_1 · client]" -> "PERSON_1". */
+export const placeholderKey = (ph: string) => ph.match(/^\[?([A-Z_]+_\d+)/)?.[1] ?? null;
+
+/**
+ * Merge one paste's mapping into a tab-level session (key -> value) so that several
+ * pastes in the same chat never reuse [PERSON_1] for two different people:
+ * the same value keeps its existing key; a new value with a clashing key is renumbered.
+ * Returns the redacted text rewritten to the session's keys.
+ */
+export function mergeIntoSession(
+  session: Record<string, string>,
+  redacted: string,
+  mapping: Record<string, string>,
+): { redacted: string; session: Record<string, string> } {
+  const next = { ...session };
+  const byValue = new Map(Object.entries(next).map(([k, v]) => [v.toLowerCase(), k]));
+  const rename = new Map<string, string>();
+  for (const [ph, value] of Object.entries(mapping)) {
+    const key = placeholderKey(ph);
+    if (!key) continue;
+    const existing = byValue.get(value.toLowerCase());
+    if (existing) {
+      rename.set(key, existing);
+      continue;
+    }
+    let target = key;
+    if (target in next) {
+      const type = key.replace(/_\d+$/, '');
+      let n = 1;
+      while (`${type}_${n}` in next) n++;
+      target = `${type}_${n}`;
+    }
+    next[target] = value;
+    byValue.set(value.toLowerCase(), target);
+    rename.set(key, target);
+  }
+  const out = redacted.replace(/\[([A-Z_]+_\d+)/g, (m, k: string) => `[${rename.get(k) ?? k}`);
+  return { redacted: out, session: next };
 }
 
 /**

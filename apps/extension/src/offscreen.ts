@@ -1,0 +1,77 @@
+/**
+ * Redline worker: a hidden offscreen document that owns Firebase + Gemini Nano.
+ *
+ * Content scripts on AI chat sites only capture the paste and show the overlay.
+ * The raw text travels over an extension-internal port to this page, is redacted
+ * on-device here, and only the result goes back. Nothing in this flow touches the network.
+ */
+import {
+  createModels,
+  DEFAULT_POLICY,
+  extractEntitiesOnDevice,
+  getDeviceStatus,
+  initRedline,
+  redact,
+  warmUpDevice,
+  watchPolicy,
+  type Policy,
+} from '@redline/core';
+import { configFromEnv } from '@redline/ui/src/env';
+import { PORT_NAME, type PolicySnapshot, type WorkerEvent, type WorkerRequest } from './protocol';
+
+const config = configFromEnv(import.meta.env, 'extension');
+const fb = config ? initRedline(config) : null;
+
+let policy: Policy = DEFAULT_POLICY;
+let models = fb ? createModels(fb.ai, policy) : null;
+let device = 'unsupported';
+
+async function refreshDevice() {
+  device = await getDeviceStatus();
+  return device;
+}
+
+async function boot() {
+  await refreshDevice();
+  if (fb) {
+    await watchPolicy(fb.remoteConfig, (p) => {
+      policy = p;
+      models = createModels(fb.ai, p);
+      chrome.storage.local.set({ redlinePolicy: { policy, device } satisfies PolicySnapshot }).catch(() => {});
+    });
+  }
+  chrome.storage.local.set({ redlinePolicy: { policy, device } satisfies PolicySnapshot }).catch(() => {});
+  if (models && device === 'available') {
+    warmUpDevice(models.extractor)
+      .then((ms) => console.info(`[redline] Nano warm-up ${ms} ms`))
+      .catch((e) => console.warn('[redline] Nano warm-up failed', e));
+  }
+}
+const ready = boot();
+
+chrome.runtime.onConnect.addListener((port) => {
+  if (port.name !== PORT_NAME) return;
+  port.onMessage.addListener(async (msg: WorkerRequest) => {
+    if (msg.type !== 'redact') return;
+    const send = (e: WorkerEvent) => {
+      try {
+        port.postMessage(e);
+      } catch {
+        /* tab closed */
+      }
+    };
+    try {
+      await ready;
+      if (device !== 'available') await refreshDevice();
+      const m = models;
+      const result = await redact(msg.text, policy, {
+        onPatterns: (partial) => send({ type: 'partial', id: msg.id, result: partial }),
+        extractLocal:
+          m && device === 'available' ? (t, enabled) => extractEntitiesOnDevice(m.extractor, t, enabled) : undefined,
+      });
+      send({ type: 'final', id: msg.id, result });
+    } catch (e) {
+      send({ type: 'error', id: msg.id, message: (e as Error).message });
+    }
+  });
+});

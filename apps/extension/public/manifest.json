@@ -2,11 +2,26 @@
   "manifest_version": 3,
   "name": "Redline — Privacy firewall for AI chat",
   "short_name": "Redline",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Redacts confidential details on-device with Gemini Nano before you paste into AI chat tools.",
   "minimum_chrome_version": "138",
   "action": { "default_title": "Open Redline" },
   "side_panel": { "default_path": "sidepanel.html" },
   "background": { "service_worker": "background.js", "type": "module" },
-  "permissions": ["sidePanel", "storage"]
+  "permissions": ["sidePanel", "storage", "offscreen"],
+  "content_scripts": [
+    {
+      "matches": [
+        "https://chatgpt.com/*",
+        "https://gemini.google.com/*",
+        "https://claude.ai/*",
+        "https://copilot.microsoft.com/*",
+        "https://www.perplexity.ai/*",
+        "http://localhost/*",
+        "http://127.0.0.1/*"
+      ],
+      "js": ["content.js"],
+      "run_at": "document_start"
+    }
+  ]
 }

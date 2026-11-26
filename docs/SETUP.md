@@ -45,4 +45,13 @@ npm run dev:web          # Playground at http://localhost:5173 (accuracy eval: /
 npm run build            # builds apps/web/dist and apps/extension/dist
 npm test                 # core unit tests
 ```
-**Load the extension:** go to `chrome://extensions`, turn on Developer mode, click **Load unpacked** and choose `apps/extension/dist`. Then click the Redline icon to open the side panel.
+**Load the extension:** go to `chrome://extensions`, turn on Developer mode, click **Load unpacked** and choose `apps/extension/dist`. After every `npm run build`, click the extension's reload icon there.
+
+**Use it:** paste anything longer than 40 characters into ChatGPT, Gemini, Claude, Copilot or Perplexity. The Redline card shows the on-device redaction:
+- **Enter** inserts the redacted text (if Nano is still working, it waits and inserts the final version).
+- **Esc** cancels and inserts nothing.
+- **Insert original** is available unless `redline_allow_override` is `false`.
+
+After your first redacted paste, a **Redline · Show real names** pill appears top-right. It swaps placeholders in the AI's replies back to real values, in that tab only.
+
+**No account handy?** Open `http://localhost:5173/mock-chat.html` (with `npm run dev:web` running). It is a ChatGPT-like page whose "AI" echoes your message, and the extension works on it too.

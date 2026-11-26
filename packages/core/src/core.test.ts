@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { detectPatterns, luhnValid } from './detectors';
-import { assertNoLeak, rehydrate } from './placeholders';
+import { assertNoLeak, mergeIntoSession, rehydrate } from './placeholders';
 import { birthDecade, moneyRange, safeHint } from './meaning';
 import { attachPromptOptions, runOnDevice, salvageEntityJson, type AbortablePromptOptions } from './ai';
 import type { GenerativeModel } from 'firebase/ai';
@@ -295,5 +295,24 @@ describe('on-device call control', () => {
     expect(aborted).toBe(true);
     expect(order).toEqual(['hung:start', 'next:start']);
     expect(opts.signal).toBeUndefined();
+  });
+});
+
+describe('multi-paste session', () => {
+  it('keeps one key per person across pastes and renumbers clashes', () => {
+    let session: Record<string, string> = {};
+    const a = mergeIntoSession(session, 'Ask [PERSON_1 · client] about [ORG_1 · company]', {
+      '[PERSON_1 · client]': 'Priya Shah', '[ORG_1 · company]': 'Acme Corp',
+    });
+    session = a.session;
+    expect(a.redacted).toBe('Ask [PERSON_1 · client] about [ORG_1 · company]');
+
+    // Second paste: a different person is also PERSON_1, and Priya is PERSON_2.
+    const b = mergeIntoSession(session, '[PERSON_1] met [PERSON_2] at [ORG_1 · company]', {
+      '[PERSON_1]': 'Tom Becker', '[PERSON_2]': 'Priya Shah', '[ORG_1 · company]': 'Acme Corp',
+    });
+    expect(b.redacted).toBe('[PERSON_2] met [PERSON_1] at [ORG_1 · company]');
+    expect(b.session).toEqual({ PERSON_1: 'Priya Shah', ORG_1: 'Acme Corp', PERSON_2: 'Tom Becker' });
+    expect(rehydrate('[PERSON_2] emailed [PERSON_1 · client]', b.session)).toBe('Tom Becker emailed Priya Shah');
   });
 });

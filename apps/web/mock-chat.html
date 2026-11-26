@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Mock AI Chat (Redline test page)</title>
+    <style>
+      :root { --bg:#f4f4f5; --panel:#fff; --ink:#18181b; --muted:#71717a; --line:#e4e4e7; --me:#e4e4e7; --accent:#18181b; }
+      @media (prefers-color-scheme: dark) { :root { --bg:#18181b; --panel:#27272a; --ink:#f4f4f5; --muted:#a1a1aa; --line:#3f3f46; --me:#3f3f46; --accent:#f4f4f5; } }
+      * { box-sizing: border-box; }
+      body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.55 system-ui, -apple-system, "Segoe UI", sans-serif; }
+      main { max-width: 760px; margin: 0 auto; padding: 16px 16px 180px; display: grid; gap: 14px; }
+      header { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+      header small { color: var(--muted); }
+      .msg { padding: 12px 14px; border-radius: 14px; background: var(--panel); border: 1px solid var(--line); white-space: pre-wrap; overflow-wrap: anywhere; }
+      .msg.me { background: var(--me); margin-left: 15%; }
+      .msg .who { font-size: 12px; color: var(--muted); display: block; margin-bottom: 4px; }
+      form { position: fixed; left: 0; right: 0; bottom: 0; padding: 12px 16px 18px; background: linear-gradient(transparent, var(--bg) 30%); }
+      .composer { max-width: 760px; margin: 0 auto; display: flex; gap: 8px; align-items: flex-end; background: var(--panel); border: 1px solid var(--line); border-radius: 18px; padding: 10px; }
+      #prompt { flex: 1; min-height: 24px; max-height: 200px; overflow: auto; outline: none; white-space: pre-wrap; }
+      #prompt:empty::before { content: attr(data-placeholder); color: var(--muted); }
+      button { border: 0; border-radius: 10px; padding: 8px 14px; background: var(--accent); color: var(--bg); font: 600 14px system-ui; cursor: pointer; }
+    </style>
+  </head>
+  <body>
+    <main id="log">
+      <header><strong>Mock AI Chat</strong><small>Local test page for the Redline extension · the "AI" just echoes your message</small></header>
+    </main>
+    <form id="f">
+      <div class="composer">
+        <div id="prompt" contenteditable="true" role="textbox" aria-label="Message" data-placeholder="Paste something confidential here…"></div>
+        <button type="submit">Send</button>
+      </div>
+    </form>
+    <script type="module" src="/src/mock-chat.ts"></script>
+  </body>
+</html>
