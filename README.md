@@ -6,7 +6,7 @@
 
 Built for **#BuildHybridAI 2026** with the **Firebase AI Logic hybrid inference SDK** (Web/Chrome track).
 
-<p align="center"><a href="https://github.com/jithendra-10/redline/blob/main/docs/media/redline-teaser.mp4"><img src="docs/media/teaser-poster.jpg" width="720" alt="Play the 23-second Redline teaser: the Redline card on Gemini, with names, the case number and the settlement amount replaced on-device by placeholders that keep their meaning"></a></p>
+<p align="center"><img src="docs/media/redline-teaser.gif" width="720" alt="23-second Redline teaser: secrets pasted into AI chatbots; the Redline card on Gemini replaces names, the case number and the settlement amount on-device with placeholders that keep their meaning; the AI sees placeholders while you see the real names"><br><sub>23-second teaser (silent preview) · <a href="docs/media/redline-teaser.mp4">download with sound</a></sub></p>
 
 - **Try it without installing anything:** https://redline-hybrid.web.app
 - **Install the extension:** [docs/JUDGES.md](docs/JUDGES.md) (about 2 minutes)
